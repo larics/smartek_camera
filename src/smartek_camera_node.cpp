@@ -22,9 +22,8 @@ int main ( int argc, char **argv ) {
 
 
 
-inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageBitmap& img )
+inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageBitmap& img ) {
 
-{
     UINT32 srcPixelType;
     UINT32 srcWidth, srcHeight;
 
@@ -53,11 +52,11 @@ inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageBitmap& img )
     cameraInfo_.height = srcHeight;
 
     cameraPublisher_.publish(*msg, cameraInfo_);
+
 }
 
 // IPv4 address conversion to string
-static std::string IpAddrToString(UINT32 ipAddress)
-{
+static std::string IpAddrToString(UINT32 ipAddress) {
     std::stringstream stream;
     UINT32 temp1, temp2, temp3, temp4;
 
@@ -150,21 +149,22 @@ SmartekCameraNode::SmartekCameraNode() {
     }
     if (!cameraConnected) {
         ROS_ERROR("No camera connected!");
-        ros::shutdown();
+        ros::requestShutdown();
+        memAllocated_ = false;
     }
+    else {
+        pn_ = new ros::NodeHandle();
+        pnp_ = new ros::NodeHandle(std::string("~"));
 
-    pn_ = new ros::NodeHandle();
-    pnp_ = new ros::NodeHandle(std::string("~"));
+        pimageTransport_ = new image_transport::ImageTransport(*pnp_);
+        cameraPublisher_ = pimageTransport_->advertiseCamera("image_color", 1);
 
-    pimageTransport_ = new image_transport::ImageTransport(*pnp_);
-    cameraPublisher_ = pimageTransport_->advertiseCamera(ros::this_node::getName()+"/image_color", 1);
-
-    pcameraInfoManager_ = new camera_info_manager::CameraInfoManager(ros::NodeHandle(ros::this_node::getName()), m_device_->GetModelName());
-
+        pcameraInfoManager_ = new camera_info_manager::CameraInfoManager(*pnp_, m_device_->GetSerialNumber());
+        memAllocated_ = true;
+    }
 }
 
-SmartekCameraNode::~SmartekCameraNode()
-{
+SmartekCameraNode::~SmartekCameraNode() {
 
     if (m_device_.IsValid() && m_device_->IsConnected()) {
         // stop acquisition
@@ -180,11 +180,12 @@ SmartekCameraNode::~SmartekCameraNode()
     gige::ExitImageProcAPI();
     gige::ExitGigEVisionAPI();
 
-    delete pn_;
-    delete pnp_;
-    delete pimageTransport_;
-    delete pcameraInfoManager_;
-
+    if(memAllocated_) {
+        delete pn_;
+        delete pnp_;
+        delete pimageTransport_;
+        delete pcameraInfoManager_;
+    }
 }
 
 void SmartekCameraNode::processFrames() {
@@ -198,8 +199,6 @@ void SmartekCameraNode::processFrames() {
 
                 //UINT32 a; m_colorPipelineBitmap_->GetPixelType(a);
                 ros_publish_gige_image(m_colorPipelineBitmap_);
-
-
             }
 
             // remove (pop) image from image buffer

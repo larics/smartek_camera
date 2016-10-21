@@ -43,6 +43,8 @@ private:
 
     bool m_defaultGainNotSet_;
     double m_defaultGain_;
+
+    bool memAllocated_;
 };
 
 
