@@ -3,6 +3,7 @@
 
 #include "gige_cpp/GigEVisionSDK.h"
 #include <ros/ros.h>
+#include <camera_info_manager/camera_info_manager.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sstream>
@@ -15,27 +16,33 @@
 class SmartekCameraNode {
 
 public:
-    SmartekCameraNode ( ros::NodeHandle &n );
+    SmartekCameraNode();
     ~SmartekCameraNode();
     void processFrames();
 
 private:
-    ros::NodeHandle n_;
-    image_transport::ImageTransport it_;
-    image_transport::Publisher pub_;
+    ros::NodeHandle *pn_;
+    ros::NodeHandle *pnp_;
+    image_transport::CameraPublisher cameraPublisher_;
+    image_transport::ImageTransport *pimageTransport_;
+    camera_info_manager::CameraInfoManager *pcameraInfoManager_;
+    sensor_msgs::CameraInfo cameraInfo_;
+
 
     // GigEVisionSDK members
-    gige::IDevice m_device;
-    gige::IImageProcAPI m_imageProcApi;
+    gige::IDevice m_device_;
+    gige::IImageProcAPI m_imageProcApi_;
 
-    gige::IAlgorithm m_colorPipelineAlg;
-    gige::IParams m_colorPipelineParams;
-    gige::IResults m_colorPipelineResults;
-    gige::IImageBitmap m_colorPipelineBitmap;
+    gige::IAlgorithm m_colorPipelineAlg_;
+    gige::IParams m_colorPipelineParams_;
+    gige::IResults m_colorPipelineResults_;
+    gige::IImageBitmap m_colorPipelineBitmap_;
+    gige::IImageInfo m_imageInfo_;
 
-    bool m_defaultGainNotSet;
-    double m_defaultGain;
+    inline void ros_publish_gige_image(gige::IImageBitmap& img );
 
+    bool m_defaultGainNotSet_;
+    double m_defaultGain_;
 };
 
 

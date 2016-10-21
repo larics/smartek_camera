@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.9)
 project(smartek_camera)
 
-find_package(catkin REQUIRED cv_bridge genmsg image_transport sensor_msgs)
+find_package(catkin REQUIRED cv_bridge genmsg image_transport camera_info_manager sensor_msgs)
 set(CMAKE_CXX_FLAGS "-std=c++11")
 
 catkin_package()
