@@ -3,7 +3,7 @@
 
 int main ( int argc, char **argv ) {
 
-    ros::init(argc, argv, "smartek_camera_node");
+    ros::init(argc, argv, "camera");
 
     ros::NodeHandle n;
     ros::NodeHandle np(std::string("~"));
