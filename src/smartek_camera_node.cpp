@@ -22,7 +22,7 @@ int main ( int argc, char **argv ) {
 
 
 
-inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageBitmap& img ) {
+inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageInfo& img ) {
 
     UINT32 srcPixelType;
     UINT32 srcWidth, srcHeight;
@@ -33,10 +33,10 @@ inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageBitmap& img ) 
     UINT32 lineSize = img->GetLineSize();
 
     // construct an openCV image sharing memory with GigE
-    cv::Mat opencv_image(srcHeight, srcWidth, CV_8UC4, img->GetRawData(), lineSize);
+    cv::Mat opencv_image(srcHeight, srcWidth, CV_8UC1, img->GetRawData(), lineSize);
 
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgra8", opencv_image).toImageMsg();
-    msg->header.frame_id="camera";
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bayer_rggb8", opencv_image).toImageMsg();
+    msg->header.frame_id="charlie/camera";
     msg->header.seq = m_imageInfo_->GetImageID();
 
 
@@ -157,7 +157,7 @@ SmartekCameraNode::SmartekCameraNode() {
         pnp_ = new ros::NodeHandle(std::string("~"));
 
         pimageTransport_ = new image_transport::ImageTransport(*pnp_);
-        cameraPublisher_ = pimageTransport_->advertiseCamera("image_color", 1);
+        cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 1);
 
         pcameraInfoManager_ = new camera_info_manager::CameraInfoManager(*pnp_, m_device_->GetSerialNumber());
         memAllocated_ = true;
@@ -195,10 +195,10 @@ void SmartekCameraNode::processFrames() {
             m_device_->GetImageInfo(&m_imageInfo_);
 
             if (m_imageInfo_ != NULL) {
-                m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_, m_colorPipelineParams_, m_colorPipelineResults_);
+                //m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_, m_colorPipelineParams_, m_colorPipelineResults_);
 
                 //UINT32 a; m_colorPipelineBitmap_->GetPixelType(a);
-                ros_publish_gige_image(m_colorPipelineBitmap_);
+                ros_publish_gige_image(m_imageInfo_);
             }
 
             // remove (pop) image from image buffer
