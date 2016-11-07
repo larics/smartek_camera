@@ -130,17 +130,20 @@ SmartekCameraNode::SmartekCameraNode() {
             bool status = m_device_->SetStringNodeValue("TriggerMode", "Off");
             // set continuous acquisition mode
             status = m_device_->SetStringNodeValue("AcquisitionMode", "Continuous");
+            status = m_device_->SetFloatNodeValue("AcquisitionFrameRate", 20.0);            
             // start acquisition
             status = m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
             status = m_device_->CommandNodeExecute("AcquisitionStart");
 
             double exposure, gain;
+            m_device_->SetFloatNodeValue("ExposureTime", 25000.0);
             m_device_->GetFloatNodeValue("ExposureTime", exposure);
-            ROS_INFO("Exposure: %.2f", exposure);
+            ROS_INFO("Exposure: %.2lf", exposure);
 
+            m_device_->SetFloatNodeValue("Gain", 20.0);
             m_device_->GetFloatNodeValue("Gain", gain);
 
-            ROS_INFO("Gain: %.2f", gain);
+            ROS_INFO("Gain: %.2lf", gain);
 
             m_defaultGainNotSet_ = true;
             m_defaultGain_ = 0.0;
