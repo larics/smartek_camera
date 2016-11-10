@@ -9,9 +9,8 @@
 #include <sstream>
 #include <math.h>
 #include <opencv2/opencv.hpp>
-
-
-
+#include <dynamic_reconfigure/server.h>
+#include <smartek_camera/SmartekCameraConfig.h>
 
 class SmartekCameraNode {
 
@@ -19,15 +18,27 @@ public:
     SmartekCameraNode();
     ~SmartekCameraNode();
     void processFrames();
+    void run();
 
 private:
+    typedef smartek_camera::SmartekCameraConfig Config;
+    void reconfigure_callback(Config& config, uint32_t level);
+
+    Config config_;
+
     ros::NodeHandle *pn_;
     ros::NodeHandle *pnp_;
     image_transport::CameraPublisher cameraPublisher_;
     image_transport::ImageTransport *pimageTransport_;
     camera_info_manager::CameraInfoManager *pcameraInfoManager_;
     sensor_msgs::CameraInfo cameraInfo_;
+    double nodeRate_;
+    dynamic_reconfigure::Server<Config> 				reconfigureServer_;
+    dynamic_reconfigure::Server<Config>::CallbackType 	reconfigureCallback_;
 
+
+    bool cameraConnected_;
+    std::string serialNumber_; // when using multiple cameras
 
     // GigEVisionSDK members
     gige::IDevice m_device_;
