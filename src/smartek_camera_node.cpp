@@ -1,6 +1,5 @@
 #include "smartek_camera_node.h"
 
-
 int main ( int argc, char **argv ) {
 
     ros::init(argc, argv, "camera");
@@ -9,23 +8,21 @@ int main ( int argc, char **argv ) {
     return 0;
 }
 
-
-
-
-inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageInfo& img ) {
+void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface& img ) {
 
     UINT32 srcPixelType;
     UINT32 srcWidth, srcHeight;
 
-    img->GetPixelType(srcPixelType);
-    img->GetSize(srcWidth, srcHeight);
+    img.GetPixelType(srcPixelType);
+    img.GetSize(srcWidth, srcHeight);
 
-    UINT32 lineSize = img->GetLineSize();
+    UINT32 lineSize = img.GetLineSize();
 
     // construct an openCV image sharing memory with GigE
-    cv::Mat opencv_image(srcHeight, srcWidth, CV_8UC1, img->GetRawData(), lineSize);
+    cv::Mat opencv_image(srcHeight, srcWidth, config_.SmartekPipeline ? CV_8UC4 : CV_8UC1, (void *) img.GetRawData(), lineSize);
 
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bayer_rggb8", opencv_image).toImageMsg();
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", opencv_image).toImageMsg();
+
     msg->header.frame_id=config_.frame_id;
     msg->header.seq = m_imageInfo_->GetImageID();
 
@@ -62,7 +59,6 @@ static std::string IpAddrToString(UINT32 ipAddress) {
 
 
 void SmartekCameraNode::run() {
-
     ros::Rate rate(nodeRate_);
     while ( ros::ok() ) {
         processFrames();
@@ -73,11 +69,10 @@ void SmartekCameraNode::run() {
 
 
 SmartekCameraNode::SmartekCameraNode() {
-
     pn_ = new ros::NodeHandle();
     pnp_ = new ros::NodeHandle(std::string("~"));
 
-    pnp_->param<std::string>("SerialNumber", serialNumber_);
+    serialNumber_ = pnp_->param<std::string>("SerialNumber", std::string());
 
     m_device_ = NULL;
     gige::InitGigEVisionAPI();
@@ -217,10 +212,13 @@ void SmartekCameraNode::processFrames() {
             m_device_->GetImageInfo(&m_imageInfo_);
 
             if (m_imageInfo_ != NULL) {
-                //m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_, m_colorPipelineParams_, m_colorPipelineResults_);
+                if(config_.SmartekPipeline) {
+                    m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_,
+                                                      m_colorPipelineParams_, m_colorPipelineResults_);
+                    ros_publish_gige_image(gige::IImageBitmapInterface(m_colorPipelineBitmap_));
+                } else
+                    ros_publish_gige_image(gige::IImageBitmapInterface(m_imageInfo_));
 
-                //UINT32 a; m_colorPipelineBitmap_->GetPixelType(a);
-                ros_publish_gige_image(m_imageInfo_);
             }
 
             // remove (pop) image from image buffer

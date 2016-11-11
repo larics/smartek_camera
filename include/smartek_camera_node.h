@@ -50,7 +50,7 @@ private:
     gige::IImageBitmap m_colorPipelineBitmap_;
     gige::IImageInfo m_imageInfo_;
 
-    inline void ros_publish_gige_image(gige::IImageInfo& img );
+    void ros_publish_gige_image(const gige::IImageBitmapInterface& img );
 
     bool m_defaultGainNotSet_;
     double m_defaultGain_;
