@@ -44,7 +44,7 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
 ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
     double c_ros = ros::Time::now().toSec();
-    double c_cam = (double) c_cam_uint / 1000000;
+    double c_cam = (double) c_cam_uint / 1000000.0;
     if(m_imageInfo_->GetImageID() < 10){
         p_cam = c_cam;
         p_out = c_ros;
@@ -54,7 +54,7 @@ ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
     double d_err = c_err - p_err; // derivative of error
     i_err = i_err + c_err; // integral of error
 
-    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err + config_.tune_kd*d_err + config_.TimeOffset) / 1000;
+    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err + config_.tune_kd*d_err + config_.TimeOffset) / 1000.0;
 
     double c_out = p_out + (c_cam - p_cam) + pid_res;
 
@@ -159,10 +159,10 @@ SmartekCameraNode::SmartekCameraNode() {
             ROS_INFO("Acquisition framerate: %.2lf", acquisitionframerate);
 
             ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
-            ROS_INFO("Time offset: %f", config_.TimeOffset / 1000);
-            ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000);
-            ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000);
-            ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000);
+            ROS_INFO("Time offset: %f", config_.TimeOffset / 1000.0);
+            ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000.0);
+            ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000.0);
+            ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000.0);
 
             //m_defaultGainNotSet_ = true;
             //m_defaultGain_ = 0.0;
@@ -207,10 +207,10 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
         ROS_INFO("New gain: %.2lf", config_.Gain);
         ROS_INFO("New acquisition framerate: %.2lf", config_.AcquisitionFrameRate);
         ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
-        ROS_INFO("Time offset: %f", config_.TimeOffset / 1000);
-        ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000);
-        ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000);
-        ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000);
+        ROS_INFO("Time offset: %f", config_.TimeOffset / 1000.0);
+        ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000.0);
+        ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000.0);
+        ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000.0);
 
         m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
         m_device_->CommandNodeExecute("AcquisitionStart");
