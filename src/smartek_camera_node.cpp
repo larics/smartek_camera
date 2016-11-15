@@ -40,9 +40,9 @@ inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageInfo& img ) {
     msg->header.seq = m_imageInfo_->GetImageID();
 
 
-    UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
-    UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
-    msg->header.stamp = ros::Time::now(); //ros::Time(timestamp_seconds, 0); timestamp_nanoseconds*1000); // fixme nanoseconds
+    //UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
+    //UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
+    msg->header.stamp = enable_tuning ? sync_timestamp(m_imageInfo_->GetCameraTimestamp()) : ros::Time::now();
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -53,6 +53,32 @@ inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageInfo& img ) {
 
     cameraPublisher_.publish(*msg, cameraInfo_);
 
+}
+
+ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
+    double c_ros = ros::Time::now().toSec();
+    double c_cam = (double) c_cam_uint / 1000000;
+    if(m_imageInfo_->GetImageID() < 10){
+        p_cam = c_cam;
+        p_out = c_ros;
+    }
+
+    double c_err = p_out + (c_cam - p_cam) - c_ros; // difference between current and calculated time
+    double d_err = c_err - p_err; // derivative of error
+    i_err = i_err + c_err; // integral of error
+
+    double pid_res = tune_kp*c_err + tune_ki*i_err + tune_kd*d_err + time_offset;
+
+    double c_out = p_out + (c_cam - p_cam) + pid_res + time_offset;
+
+    p_cam = c_cam;
+    p_ros = c_ros;
+    p_out = c_out;
+    p_err = c_err;
+
+    //ROS_INFO("ROS_TIME: %f\tTIMESTAMP: %f\tERROR: %f\tPID_RES: %f", c_ros, c_out, c_err, pid_res);
+
+    return ros::Time(c_out);
 }
 
 // IPv4 address conversion to string
@@ -164,6 +190,13 @@ SmartekCameraNode::SmartekCameraNode() {
 
         pcameraInfoManager_ = new camera_info_manager::CameraInfoManager(*pnp_, m_device_->GetSerialNumber());
         memAllocated_ = true;
+
+        // Timestamp tuning
+        pnp_->param("enable_tuning", enable_tuning, true);
+        pnp_->param("tune_kp", tune_kp,  0/1024);
+        pnp_->param("tune_ki", tune_ki, -1/1024);
+        pnp_->param("tune_kd", tune_kd,  0/1024);
+        pnp_->param("time_offset", time_offset,  -0.064);
     }
 }
 
