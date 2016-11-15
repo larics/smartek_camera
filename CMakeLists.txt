@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 2.8.9)
 project(smartek_camera)
 
-find_package(catkin REQUIRED cv_bridge genmsg image_transport camera_info_manager sensor_msgs)
+find_package(catkin REQUIRED COMPONENTS cv_bridge genmsg image_transport camera_info_manager sensor_msgs dynamic_reconfigure)
 set(CMAKE_CXX_FLAGS "-std=c++11")
 
+generate_dynamic_reconfigure_options(cfg/SmartekCamera.cfg)
 catkin_package()
 
 find_package(OpenCV)
@@ -21,3 +22,4 @@ include_directories(${catkin_INCLUDE_DIRS})
 # add the publisher example
 add_executable(smartek_camera_node ${smartek_camera_node_SRCS})
 target_link_libraries(smartek_camera_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} GigEVisionSDK)
+add_dependencies(smartek_camera_node ${PROJECT_NAME}_gencfg)

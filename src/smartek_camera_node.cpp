@@ -1,42 +1,29 @@
 #include "smartek_camera_node.h"
 
-
 int main ( int argc, char **argv ) {
 
     ros::init(argc, argv, "camera");
+    SmartekCameraNode().run();
 
-    ros::NodeHandle n;
-    ros::NodeHandle np(std::string("~"));
-
-    SmartekCameraNode smartek_camera;
-    ros::Rate rate ( 50 );
-
-    while ( ros::ok() ) {
-        smartek_camera.processFrames();
-        ros::spinOnce();
-        rate.sleep();
-    }
     return 0;
 }
 
-
-
-
-inline void SmartekCameraNode::ros_publish_gige_image(gige::IImageInfo& img ) {
+void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface& img ) {
 
     UINT32 srcPixelType;
     UINT32 srcWidth, srcHeight;
 
-    img->GetPixelType(srcPixelType);
-    img->GetSize(srcWidth, srcHeight);
+    img.GetPixelType(srcPixelType);
+    img.GetSize(srcWidth, srcHeight);
 
-    UINT32 lineSize = img->GetLineSize();
+    UINT32 lineSize = img.GetLineSize();
 
     // construct an openCV image sharing memory with GigE
-    cv::Mat opencv_image(srcHeight, srcWidth, CV_8UC1, img->GetRawData(), lineSize);
+    cv::Mat opencv_image(srcHeight, srcWidth, config_.SmartekPipeline ? CV_8UC4 : CV_8UC1, (void *) img.GetRawData(), lineSize);
 
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bayer_rggb8", opencv_image).toImageMsg();
-    msg->header.frame_id="charlie/camera";
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", opencv_image).toImageMsg();
+
+    msg->header.frame_id=config_.frame_id;
     msg->header.seq = m_imageInfo_->GetImageID();
 
 
@@ -97,15 +84,28 @@ static std::string IpAddrToString(UINT32 ipAddress) {
 }
 
 
+void SmartekCameraNode::run() {
+    ros::Rate rate(nodeRate_);
+    while ( ros::ok() ) {
+        processFrames();
+        ros::spinOnce();
+        rate.sleep();
+    }
+}
+
 
 SmartekCameraNode::SmartekCameraNode() {
+    pn_ = new ros::NodeHandle();
+    pnp_ = new ros::NodeHandle(std::string("~"));
+
+    serialNumber_ = pnp_->param<std::string>("SerialNumber", std::string());
 
     m_device_ = NULL;
     gige::InitGigEVisionAPI();
     gige::IGigEVisionAPI gigeVisionApi = gige::GetGigEVisionAPI();
     gige::InitImageProcAPI();
     m_imageProcApi_ = gige::GetImageProcAPI();
-    bool cameraConnected = false;
+    cameraConnected_ = false;
 
     if (!gigeVisionApi->IsUsingKernelDriver()) {
         ROS_WARN("!!! Warning: Smartek Filter Driver not loaded.");
@@ -120,29 +120,16 @@ SmartekCameraNode::SmartekCameraNode() {
     gige::DevicesList devices = gigeVisionApi->GetAllDevices();
 
     if (devices.size() > 0) {
-        // take first device in list
-        m_device_ = devices[0];
 
-        // use: -m GC651C
-        // to connect to this model
-//        QStringList arg = qApp->arguments();
-//        if (arg.size() >= 3 && arg.at(1).compare("-m") == 0) {
-//            std::string modelName = arg.at(2).toStdString();
-//            for (int i = 0; i < devices.size(); i++) {
-//                if (devices[i]->GetModelName().compare(modelName) == 0) {
-//                    m_device_ = devices[i];
-//                    break;
-//                }
-//            }
-//        }
-
-        // uncomment to use specific model
-        /*for (int i = 0; i < devices.size(); i++) {
-            if (devices[i]->GetModelName().compare("GC781C") == 0) {
-                m_device_ = devices[i];
-                break;
+        if(serialNumber_.size() > 0) {
+            for(int i = 0; i < devices.size(); i++)
+                if(devices[i]->GetSerialNumber() == serialNumber_) {
+                    m_device_ = devices[i];
+                    break;
+                }
             }
-        }*/
+        else
+            m_device_ = devices[0];
 
         // to change number of images in image buffer from default 10 images
         // call SetImageBufferFrameCount() method before Connect() method
@@ -153,37 +140,38 @@ SmartekCameraNode::SmartekCameraNode() {
             ROS_INFO_STREAM("IP address: " << IpAddrToString(address));
 
             // disable trigger mode
-            bool status = m_device_->SetStringNodeValue("TriggerMode", "Off");
+            m_device_->SetStringNodeValue("TriggerMode", "Off");
             // set continuous acquisition mode
-            status = m_device_->SetStringNodeValue("AcquisitionMode", "Continuous");
-            status = m_device_->SetFloatNodeValue("AcquisitionFrameRate", 20.0);            
-            // start acquisition
-            status = m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
-            status = m_device_->CommandNodeExecute("AcquisitionStart");
+            m_device_->SetStringNodeValue("AcquisitionMode", "Continuous");
 
-            double exposure, gain;
-            m_device_->SetFloatNodeValue("ExposureTime", 25000.0);
+            // start acquisition
+            m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
+            m_device_->CommandNodeExecute("AcquisitionStart");
+
+            double exposure, gain, acquisitionframerate;
             m_device_->GetFloatNodeValue("ExposureTime", exposure);
             ROS_INFO("Exposure: %.2lf", exposure);
 
-            m_device_->SetFloatNodeValue("Gain", 20.0);
             m_device_->GetFloatNodeValue("Gain", gain);
-
             ROS_INFO("Gain: %.2lf", gain);
 
-            m_defaultGainNotSet_ = true;
-            m_defaultGain_ = 0.0;
-            cameraConnected = true;
+            m_device_->GetFloatNodeValue("AcquisitionFramerate", acquisitionframerate);
+            ROS_INFO("Acquisition framerate: %.2lf", acquisitionframerate);
+
+            //m_defaultGainNotSet_ = true;
+            //m_defaultGain_ = 0.0;
+            cameraConnected_ = true;
         }
     }
-    if (!cameraConnected) {
+    if (!cameraConnected_) {
         ROS_ERROR("No camera connected!");
+        if(serialNumber_.size() > 0)
+            ROS_ERROR_STREAM("Requested camera with serial number " << serialNumber_);
         ros::requestShutdown();
         memAllocated_ = false;
     }
     else {
-        pn_ = new ros::NodeHandle();
-        pnp_ = new ros::NodeHandle(std::string("~"));
+        pnp_->param<double>("NodeRate", nodeRate_, 50);
 
         pimageTransport_ = new image_transport::ImageTransport(*pnp_);
         cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 1);
@@ -197,7 +185,32 @@ SmartekCameraNode::SmartekCameraNode() {
         pnp_->param("tune_ki", tune_ki, -1/1024);
         pnp_->param("tune_kd", tune_kd,  0/1024);
         pnp_->param("time_offset", time_offset,  -0.064);
+
+        reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
+        reconfigureServer_.setCallback(reconfigureCallback_);
     }
+}
+
+void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
+    config_ = config;
+
+    if(cameraConnected_) {
+        ROS_INFO("Reconfiguring camera");
+
+        m_device_->CommandNodeExecute("AcquisitionStop");
+        m_device_->SetIntegerNodeValue("TLParamsLocked", 0);
+
+        m_device_->SetFloatNodeValue("ExposureTime", config_.ExposureTime);
+        m_device_->SetFloatNodeValue("Gain", config_.Gain);
+        m_device_->SetFloatNodeValue("AcquisitionFrameRate", config_.AcquisitionFrameRate);
+        ROS_INFO("New exposure: %.2lf", config_.ExposureTime);
+        ROS_INFO("New gain: %.2lf", config_.Gain);
+        ROS_INFO("New acquisition framerate: %.2lf", config_.AcquisitionFrameRate);
+
+        m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
+        m_device_->CommandNodeExecute("AcquisitionStart");
+    }
+
 }
 
 SmartekCameraNode::~SmartekCameraNode() {
@@ -217,11 +230,12 @@ SmartekCameraNode::~SmartekCameraNode() {
     gige::ExitGigEVisionAPI();
 
     if(memAllocated_) {
-        delete pn_;
-        delete pnp_;
         delete pimageTransport_;
         delete pcameraInfoManager_;
     }
+
+    delete pn_;
+    delete pnp_;
 }
 
 void SmartekCameraNode::processFrames() {
@@ -231,10 +245,13 @@ void SmartekCameraNode::processFrames() {
             m_device_->GetImageInfo(&m_imageInfo_);
 
             if (m_imageInfo_ != NULL) {
-                //m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_, m_colorPipelineParams_, m_colorPipelineResults_);
+                if(config_.SmartekPipeline) {
+                    m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_,
+                                                      m_colorPipelineParams_, m_colorPipelineResults_);
+                    ros_publish_gige_image(gige::IImageBitmapInterface(m_colorPipelineBitmap_));
+                } else
+                    ros_publish_gige_image(gige::IImageBitmapInterface(m_imageInfo_));
 
-                //UINT32 a; m_colorPipelineBitmap_->GetPixelType(a);
-                ros_publish_gige_image(m_imageInfo_);
             }
 
             // remove (pop) image from image buffer
