@@ -58,7 +58,6 @@ private:
     bool memAllocated_;
 
     /* TIMESTAMP TUNING */
-
     // - previous state variables
     double p_cam;
     double p_ros;
@@ -66,7 +65,6 @@ private:
     double p_err;
 
     double i_err;
-
 
     ros::Time sync_timestamp(UINT64 c_cam_uint);
 };
