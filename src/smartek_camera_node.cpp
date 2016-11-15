@@ -27,9 +27,9 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
     msg->header.seq = m_imageInfo_->GetImageID();
 
 
-    UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
-    UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
-    msg->header.stamp = ros::Time::now(); //ros::Time(timestamp_seconds, 0); timestamp_nanoseconds*1000); // fixme nanoseconds
+    //UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
+    //UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
+    msg->header.stamp = config_.EnableTuning ? sync_timestamp(m_imageInfo_->GetCameraTimestamp()) : ros::Time::now();
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -40,6 +40,32 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
     cameraPublisher_.publish(*msg, cameraInfo_);
 
+}
+
+ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
+    double c_ros = ros::Time::now().toSec();
+    double c_cam = (double) c_cam_uint / 1000000.0;
+    if(m_imageInfo_->GetImageID() < 10){
+        p_cam = c_cam;
+        p_out = c_ros;
+    }
+
+    double c_err = p_out + (c_cam - p_cam) - c_ros; // difference between current and calculated time
+    double d_err = c_err - p_err; // derivative of error
+    i_err = i_err + c_err; // integral of error
+
+    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err + config_.tune_kd*d_err + config_.TimeOffset) / 1000.0;
+
+    double c_out = p_out + (c_cam - p_cam) + pid_res;
+
+    p_cam = c_cam;
+    p_ros = c_ros;
+    p_out = c_out;
+    p_err = c_err;
+
+    //ROS_INFO("ROS_TIME: %f\tTIMESTAMP: %f\tERROR: %f\tPID_RES: %f", c_ros, c_out, c_err, pid_res);
+
+    return ros::Time(c_out);
 }
 
 // IPv4 address conversion to string
@@ -132,6 +158,12 @@ SmartekCameraNode::SmartekCameraNode() {
             m_device_->GetFloatNodeValue("AcquisitionFramerate", acquisitionframerate);
             ROS_INFO("Acquisition framerate: %.2lf", acquisitionframerate);
 
+            ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
+            ROS_INFO("Time offset: %f", config_.TimeOffset / 1000.0);
+            ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000.0);
+            ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000.0);
+            ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000.0);
+
             //m_defaultGainNotSet_ = true;
             //m_defaultGain_ = 0.0;
             cameraConnected_ = true;
@@ -170,9 +202,15 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
         m_device_->SetFloatNodeValue("ExposureTime", config_.ExposureTime);
         m_device_->SetFloatNodeValue("Gain", config_.Gain);
         m_device_->SetFloatNodeValue("AcquisitionFrameRate", config_.AcquisitionFrameRate);
+
         ROS_INFO("New exposure: %.2lf", config_.ExposureTime);
         ROS_INFO("New gain: %.2lf", config_.Gain);
         ROS_INFO("New acquisition framerate: %.2lf", config_.AcquisitionFrameRate);
+        ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
+        ROS_INFO("Time offset: %f", config_.TimeOffset / 1000.0);
+        ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000.0);
+        ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000.0);
+        ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000.0);
 
         m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
         m_device_->CommandNodeExecute("AcquisitionStart");
