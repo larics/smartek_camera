@@ -67,10 +67,6 @@ private:
 
     double i_err;
 
-    // - tuning PID parameters
-    int tune_kp;
-    int tune_ki;
-    int tune_kd;
 
     ros::Time sync_timestamp(UINT64 c_cam_uint);
 };

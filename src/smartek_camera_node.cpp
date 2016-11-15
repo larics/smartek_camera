@@ -54,7 +54,7 @@ ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
     double d_err = c_err - p_err; // derivative of error
     i_err = i_err + c_err; // integral of error
 
-    double pid_res = tune_kp*c_err + tune_ki*i_err + tune_kd*d_err + config_.TimeOffset / 1000;
+    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err + config_.tune_kd*d_err + config_.TimeOffset) / 1000;
 
     double c_out = p_out + (c_cam - p_cam) + pid_res;
 
@@ -158,9 +158,11 @@ SmartekCameraNode::SmartekCameraNode() {
             m_device_->GetFloatNodeValue("AcquisitionFramerate", acquisitionframerate);
             ROS_INFO("Acquisition framerate: %.2lf", acquisitionframerate);
 
-            ROS_INFO("TIMESTAMP TUNING %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
-
+            ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
             ROS_INFO("Time offset: %f", config_.TimeOffset / 1000);
+            ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000);
+            ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000);
+            ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000);
 
             //m_defaultGainNotSet_ = true;
             //m_defaultGain_ = 0.0;
@@ -182,11 +184,6 @@ SmartekCameraNode::SmartekCameraNode() {
 
         pcameraInfoManager_ = new camera_info_manager::CameraInfoManager(*pnp_, m_device_->GetSerialNumber());
         memAllocated_ = true;
-
-        // Timestamp tuning
-        pnp_->param("tune_kp", tune_kp,  0/1024);
-        pnp_->param("tune_ki", tune_ki, -1/1024);
-        pnp_->param("tune_kd", tune_kd,  0/1024);
 
         reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
         reconfigureServer_.setCallback(reconfigureCallback_);
@@ -211,6 +208,9 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
         ROS_INFO("New acquisition framerate: %.2lf", config_.AcquisitionFrameRate);
         ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
         ROS_INFO("Time offset: %f", config_.TimeOffset / 1000);
+        ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000);
+        ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000);
+        ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000);
 
         m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
         m_device_->CommandNodeExecute("AcquisitionStart");
