@@ -29,7 +29,7 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
     //UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
     //UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
-    msg->header.stamp = enable_tuning ? sync_timestamp(m_imageInfo_->GetCameraTimestamp()) : ros::Time::now();
+    msg->header.stamp = config_.EnableTuning ? sync_timestamp(m_imageInfo_->GetCameraTimestamp()) : ros::Time::now();
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -54,9 +54,9 @@ ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
     double d_err = c_err - p_err; // derivative of error
     i_err = i_err + c_err; // integral of error
 
-    double pid_res = tune_kp*c_err + tune_ki*i_err + tune_kd*d_err + time_offset;
+    double pid_res = tune_kp*c_err + tune_ki*i_err + tune_kd*d_err + config_.TimeOffset / 1000;
 
-    double c_out = p_out + (c_cam - p_cam) + pid_res + time_offset;
+    double c_out = p_out + (c_cam - p_cam) + pid_res;
 
     p_cam = c_cam;
     p_ros = c_ros;
@@ -158,6 +158,10 @@ SmartekCameraNode::SmartekCameraNode() {
             m_device_->GetFloatNodeValue("AcquisitionFramerate", acquisitionframerate);
             ROS_INFO("Acquisition framerate: %.2lf", acquisitionframerate);
 
+            ROS_INFO("TIMESTAMP TUNING %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
+
+            ROS_INFO("Time offset: %f", config_.TimeOffset / 1000);
+
             //m_defaultGainNotSet_ = true;
             //m_defaultGain_ = 0.0;
             cameraConnected_ = true;
@@ -180,11 +184,9 @@ SmartekCameraNode::SmartekCameraNode() {
         memAllocated_ = true;
 
         // Timestamp tuning
-        pnp_->param("enable_tuning", enable_tuning, true);
         pnp_->param("tune_kp", tune_kp,  0/1024);
         pnp_->param("tune_ki", tune_ki, -1/1024);
         pnp_->param("tune_kd", tune_kd,  0/1024);
-        pnp_->param("time_offset", time_offset,  -0.064);
 
         reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
         reconfigureServer_.setCallback(reconfigureCallback_);
@@ -203,9 +205,12 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
         m_device_->SetFloatNodeValue("ExposureTime", config_.ExposureTime);
         m_device_->SetFloatNodeValue("Gain", config_.Gain);
         m_device_->SetFloatNodeValue("AcquisitionFrameRate", config_.AcquisitionFrameRate);
+
         ROS_INFO("New exposure: %.2lf", config_.ExposureTime);
         ROS_INFO("New gain: %.2lf", config_.Gain);
         ROS_INFO("New acquisition framerate: %.2lf", config_.AcquisitionFrameRate);
+        ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
+        ROS_INFO("Time offset: %f", config_.TimeOffset / 1000);
 
         m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
         m_device_->CommandNodeExecute("AcquisitionStart");

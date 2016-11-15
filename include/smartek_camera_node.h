@@ -58,8 +58,6 @@ private:
     bool memAllocated_;
 
     /* TIMESTAMP TUNING */
-    bool enable_tuning;
-    double time_offset;
 
     // - previous state variables
     double p_cam;
