@@ -8,7 +8,7 @@ int main ( int argc, char **argv ) {
     return 0;
 }
 
-void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface& img ) {
+void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface& img, const gige::IImageInfo& imgInfo ) {
 
     UINT32 srcPixelType;
     UINT32 srcWidth, srcHeight;
@@ -24,12 +24,12 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
     sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", opencv_image).toImageMsg();
 
     msg->header.frame_id=config_.frame_id;
-    msg->header.seq = m_imageInfo_->GetImageID();
+    msg->header.seq = imgInfo->GetImageID();
 
 
     //UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
     //UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
-    msg->header.stamp = config_.EnableTuning ? sync_timestamp(m_imageInfo_->GetCameraTimestamp()) : ros::Time::now();
+    msg->header.stamp = config_.EnableTuning ? sync_timestamp(imgInfo) : ros::Time::now();
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -42,35 +42,37 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
 }
 
-ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
-    double c_ros = ros::Time::now().toSec();
-    double c_cam = (double) c_cam_uint / 1000000.0;
+ros::Time SmartekCameraNode::sync_timestamp(const gige::IImageInfo& imgInfo){
+    static double p_cam, p_ros, p_out;
     static int first_frame_id;
     static bool first_frame_set = false;
+
+    UINT64 c_cam_uint = imgInfo->GetCameraTimestamp();
+    double c_ros = ros::Time::now().toSec();
+    double c_cam = (double) c_cam_uint / 1000000.0;
     if(!first_frame_set) {
-        first_frame_id = m_imageInfo_->GetImageID();
+        first_frame_id = imgInfo->GetImageID();
         first_frame_set = true;
     }
 
-    if(m_imageInfo_->GetImageID() < first_frame_id + 10){
+    if(imgInfo->GetImageID() < first_frame_id + 10){
         p_cam = c_cam;
         p_out = c_ros;
     }
 
     double c_err = p_out + (c_cam - p_cam) - c_ros; // difference between current and calculated time
-    double d_err = c_err - p_err; // derivative of error
-    i_err = i_err + c_err; // integral of error
+    double d_err = c_err - p_err_; // derivative of error
+    i_err_ = i_err_ + c_err; // integral of error
 
-    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err + config_.tune_kd*d_err) / 1000.0;
+    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err_ + config_.tune_kd*d_err) / 1000.0;
 
     double c_out = p_out + (c_cam - p_cam) + pid_res;
-ROS_INFO("delta_cam: %f\tdelta_out: %f", c_cam-p_cam, c_out-p_out);
+    ROS_INFO("delta_cam: %.6lf delta_ros: %.6lf delta_out: %.6lf", c_cam-p_cam, c_ros-p_ros, c_out-p_out);
     p_cam = c_cam;
     p_ros = c_ros;
     p_out = c_out;
-    p_err = c_err;
-
-    ROS_INFO("ROS_TIME: %.4f\tTIMESTAMP: %.4f\tERROR: %f\tPID_RES: %f", c_ros, c_out, c_err, pid_res);
+    p_err_ = c_err;
+    ROS_INFO("ROS_TIME: %.6lf TIMESTAMP: %.6lf ERROR: %+.6lf PID_RES: %+.8lf", c_ros, c_out, c_err, pid_res);
 
     return ros::Time(c_out + config_.TimeOffset);
 }
@@ -198,29 +200,36 @@ SmartekCameraNode::SmartekCameraNode() {
 }
 
 void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
-    config_ = config;
-
     if(cameraConnected_) {
         ROS_INFO("Reconfiguring camera");
 
         m_device_->CommandNodeExecute("AcquisitionStop");
         m_device_->SetIntegerNodeValue("TLParamsLocked", 0);
 
-        m_device_->SetFloatNodeValue("ExposureTime", config_.ExposureTime);
-        m_device_->SetFloatNodeValue("Gain", config_.Gain);
-        m_device_->SetFloatNodeValue("AcquisitionFrameRate", config_.AcquisitionFrameRate);
+        m_device_->SetFloatNodeValue("ExposureTime", config.ExposureTime);
+        m_device_->SetFloatNodeValue("Gain", config.Gain);
+        m_device_->SetFloatNodeValue("AcquisitionFrameRate", config.AcquisitionFrameRate);
 
-        ROS_INFO("New exposure: %.2lf", config_.ExposureTime);
-        ROS_INFO("New gain: %.2lf", config_.Gain);
-        ROS_INFO("New acquisition framerate: %.2lf", config_.AcquisitionFrameRate);
-        ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
-        ROS_INFO("Time offset: %f", config_.TimeOffset / 1000.0);
-        ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000.0);
-        ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000.0);
-        ROS_INFO("Tune Kd: %f", config_.tune_kd / 1000.0);
+        ROS_INFO("New exposure: %.2lf", config.ExposureTime);
+        ROS_INFO("New gain: %.2lf", config.Gain);
+        ROS_INFO("New acquisition framerate: %.2lf", config.AcquisitionFrameRate);
+        ROS_INFO("Timestamp tuning %s", config.EnableTuning ? "ENABLED" : "DISABLED");
+
+        // reset PID state if reenabling or changing parameters
+        if((!config_.EnableTuning && config.EnableTuning) || config.tune_kd != config_.tune_kd
+            || config.tune_ki != config_.tune_ki || config.tune_kp != config_.tune_kp) {
+            p_err_ = 0.0; i_err_ = 0.0;
+        }
+
+        ROS_INFO("Time offset: %f", config.TimeOffset / 1000.0);
+        ROS_INFO("Tune Kp: %f", config.tune_kp / 1000.0);
+        ROS_INFO("Tune Ki: %f", config.tune_ki / 1000.0);
+        ROS_INFO("Tune Kd: %f", config.tune_kd / 1000.0);
 
         m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
         m_device_->CommandNodeExecute("AcquisitionStart");
+
+        config_ = config;
     }
 
 }
@@ -260,9 +269,9 @@ void SmartekCameraNode::processFrames() {
                 if(config_.SmartekPipeline) {
                     m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_,
                                                       m_colorPipelineParams_, m_colorPipelineResults_);
-                    ros_publish_gige_image(gige::IImageBitmapInterface(m_colorPipelineBitmap_));
+                    ros_publish_gige_image(gige::IImageBitmapInterface(m_colorPipelineBitmap_), m_imageInfo_);
                 } else
-                    ros_publish_gige_image(gige::IImageBitmapInterface(m_imageInfo_));
+                    ros_publish_gige_image(gige::IImageBitmapInterface(m_imageInfo_), m_imageInfo_);
 
             }
 

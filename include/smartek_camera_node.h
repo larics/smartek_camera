@@ -36,7 +36,6 @@ private:
     dynamic_reconfigure::Server<Config> 				reconfigureServer_;
     dynamic_reconfigure::Server<Config>::CallbackType 	reconfigureCallback_;
 
-
     bool cameraConnected_;
     std::string serialNumber_; // when using multiple cameras
 
@@ -50,7 +49,9 @@ private:
     gige::IImageBitmap m_colorPipelineBitmap_;
     gige::IImageInfo m_imageInfo_;
 
-    void ros_publish_gige_image(const gige::IImageBitmapInterface& img );
+    void ros_publish_gige_image(const gige::IImageBitmapInterface& img, const gige::IImageInfo& imgInfo );
+    ros::Time sync_timestamp(const gige::IImageInfo& imgInfo);
+
 
     bool m_defaultGainNotSet_;
     double m_defaultGain_;
@@ -59,14 +60,8 @@ private:
 
     /* TIMESTAMP TUNING */
     // - previous state variables
-    double p_cam;
-    double p_ros;
-    double p_out;
-    double p_err;
+    double p_err_, i_err_;
 
-    double i_err;
-
-    ros::Time sync_timestamp(UINT64 c_cam_uint);
 };
 
 
