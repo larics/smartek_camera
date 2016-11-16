@@ -45,7 +45,14 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
     double c_ros = ros::Time::now().toSec();
     double c_cam = (double) c_cam_uint / 1000000.0;
-    if(m_imageInfo_->GetImageID() < 10){
+    static int first_frame_id;
+    static bool first_frame_set = false;
+    if(!first_frame_set) {
+        first_frame_id = m_imageInfo_->GetImageID();
+        first_frame_set = true;
+    }
+
+    if(m_imageInfo_->GetImageID() < first_frame_id + 10){
         p_cam = c_cam;
         p_out = c_ros;
     }
@@ -54,18 +61,18 @@ ros::Time SmartekCameraNode::sync_timestamp(UINT64 c_cam_uint){
     double d_err = c_err - p_err; // derivative of error
     i_err = i_err + c_err; // integral of error
 
-    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err + config_.tune_kd*d_err + config_.TimeOffset) / 1000.0;
+    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err + config_.tune_kd*d_err) / 1000.0;
 
     double c_out = p_out + (c_cam - p_cam) + pid_res;
-
+ROS_INFO("delta_cam: %f\tdelta_out: %f", c_cam-p_cam, c_out-p_out);
     p_cam = c_cam;
     p_ros = c_ros;
     p_out = c_out;
     p_err = c_err;
 
-    //ROS_INFO("ROS_TIME: %f\tTIMESTAMP: %f\tERROR: %f\tPID_RES: %f", c_ros, c_out, c_err, pid_res);
+    ROS_INFO("ROS_TIME: %.4f\tTIMESTAMP: %.4f\tERROR: %f\tPID_RES: %f", c_ros, c_out, c_err, pid_res);
 
-    return ros::Time(c_out);
+    return ros::Time(c_out + config_.TimeOffset);
 }
 
 // IPv4 address conversion to string
