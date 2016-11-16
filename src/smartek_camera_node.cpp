@@ -29,7 +29,7 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
     //UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
     //UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
-    msg->header.stamp = config_.EnableTuning ? sync_timestamp(imgInfo) : ros::Time::now();
+    msg->header.stamp = config_.EnableTimesync ? sync_timestamp(imgInfo) : ros::Time::now();
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -45,36 +45,73 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 ros::Time SmartekCameraNode::sync_timestamp(const gige::IImageInfo& imgInfo){
     static double p_cam, p_ros, p_out;
     static int first_frame_id;
-    static bool first_frame_set = false;
+
+    static int frame_count;
+    static double running_t0_hypothesis, original_t0_hypothesis;
+    static double cam0;
+
 
     UINT64 c_cam_uint = imgInfo->GetCameraTimestamp();
     double c_ros = ros::Time::now().toSec();
     double c_cam = (double) c_cam_uint / 1000000.0;
-    if(!first_frame_set) {
+    if(!first_frame_set_) {
         first_frame_id = imgInfo->GetImageID();
-        first_frame_set = true;
+        first_frame_set_ = true;
+
+        frame_count = 1;
+        cam0 = c_cam;
+        original_t0_hypothesis = c_ros;
     }
 
-    if(imgInfo->GetImageID() < first_frame_id + 10){
+    if(config_.TimesyncMethod == "MEH") {
+
+        double time_cam = c_cam - cam0;
+        double current_t0_hypothesis = c_ros - time_cam;
+        // recursive mean estimated hypothesis
+        running_t0_hypothesis = (double) (((frame_count-1)*((long double)running_t0_hypothesis) + current_t0_hypothesis)/frame_count);
+
+        double c_out = running_t0_hypothesis + time_cam;
+
+        double c_err = p_out + (time_cam - p_cam) - c_ros; // zasto ne c_out - c_ros?!
+        ROS_INFO("delta_cam: %.6lf delta_ros: %.6lf delta_out: %.6lf frame_count: %d", time_cam - p_cam, c_ros - p_ros, c_out - p_out, frame_count);
+        ROS_INFO("CAM_TIMESTAMP: %.8lf UNCORR_STAMP: %.8lf CUR_HYP: %.8lf", time_cam, original_t0_hypothesis + time_cam, current_t0_hypothesis);
+        ROS_INFO("ROS_TIME: %.8lf STAMP: %.8lf ERR:%+.8lf RUN_HYP: %.8lf", c_ros, c_out, c_err, running_t0_hypothesis);
+
+        p_out = c_out;
+        p_cam = time_cam;
+        p_ros = c_ros;
+        frame_count++;
+
+        return ros::Time(c_out + config_.TimeOffset);
+    }
+
+    else if(config_.TimesyncMethod == "PID") {
+        if (imgInfo->GetImageID() < first_frame_id + 10) {
+            p_cam = c_cam;
+            p_out = c_ros;
+        }
+
+        double c_err = p_out + (c_cam - p_cam) - c_ros; // difference between current and calculated time
+        double d_err = c_err - p_err_; // derivative of error
+        i_err_ = i_err_ + c_err; // integral of error
+
+        double pid_res = (config_.tune_kp * c_err + config_.tune_ki * i_err_ + config_.tune_kd * d_err) / 1000.0;
+
+        double c_out = p_out + (c_cam - p_cam) + pid_res;
+        ROS_INFO("delta_cam: %.6lf delta_ros: %.6lf delta_out: %.6lf", c_cam - p_cam, c_ros - p_ros, c_out - p_out);
         p_cam = c_cam;
-        p_out = c_ros;
+        p_ros = c_ros;
+        p_out = c_out;
+        p_err_ = c_err;
+        ROS_INFO("ROS_TIME: %.6lf TIMESTAMP: %.6lf ERROR: %+.6lf PID_RES: %+.8lf", c_ros, c_out, c_err, pid_res);
+
+        return ros::Time(c_out + config_.TimeOffset);
     }
 
-    double c_err = p_out + (c_cam - p_cam) - c_ros; // difference between current and calculated time
-    double d_err = c_err - p_err_; // derivative of error
-    i_err_ = i_err_ + c_err; // integral of error
-
-    double pid_res = (config_.tune_kp*c_err + config_.tune_ki*i_err_ + config_.tune_kd*d_err) / 1000.0;
-
-    double c_out = p_out + (c_cam - p_cam) + pid_res;
-    ROS_INFO("delta_cam: %.6lf delta_ros: %.6lf delta_out: %.6lf", c_cam-p_cam, c_ros-p_ros, c_out-p_out);
-    p_cam = c_cam;
-    p_ros = c_ros;
-    p_out = c_out;
-    p_err_ = c_err;
-    ROS_INFO("ROS_TIME: %.6lf TIMESTAMP: %.6lf ERROR: %+.6lf PID_RES: %+.8lf", c_ros, c_out, c_err, pid_res);
-
-    return ros::Time(c_out + config_.TimeOffset);
+    else {
+        ROS_ERROR_STREAM("Invalid timesync method " << config_.TimesyncMethod);
+        ros::requestShutdown();
+    }
 }
 
 // IPv4 address conversion to string
@@ -119,6 +156,8 @@ SmartekCameraNode::SmartekCameraNode() {
     if (!gigeVisionApi->IsUsingKernelDriver()) {
         ROS_WARN("!!! Warning: Smartek Filter Driver not loaded.");
     }
+
+    first_frame_set_ = false;
 
     m_colorPipelineAlg_ = m_imageProcApi_->GetAlgorithmByName("ColorPipeline");
     m_colorPipelineAlg_->CreateParams(&m_colorPipelineParams_);
@@ -167,7 +206,7 @@ SmartekCameraNode::SmartekCameraNode() {
             m_device_->GetFloatNodeValue("AcquisitionFramerate", acquisitionframerate);
             ROS_INFO("Acquisition framerate: %.2lf", acquisitionframerate);
 
-            ROS_INFO("Timestamp tuning %s", config_.EnableTuning ? "ENABLED" : "DISABLED");
+            ROS_INFO("Timestamp tuning %s", config_.EnableTimesync ? "ENABLED" : "DISABLED");
             ROS_INFO("Time offset: %f", config_.TimeOffset / 1000.0);
             ROS_INFO("Tune Kp: %f", config_.tune_kp / 1000.0);
             ROS_INFO("Tune Ki: %f", config_.tune_ki / 1000.0);
@@ -213,12 +252,13 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
         ROS_INFO("New exposure: %.2lf", config.ExposureTime);
         ROS_INFO("New gain: %.2lf", config.Gain);
         ROS_INFO("New acquisition framerate: %.2lf", config.AcquisitionFrameRate);
-        ROS_INFO("Timestamp tuning %s", config.EnableTuning ? "ENABLED" : "DISABLED");
+        ROS_INFO("Timestamp tuning %s", config.EnableTimesync ? "ENABLED" : "DISABLED");
 
         // reset PID state if reenabling or changing parameters
-        if((!config_.EnableTuning && config.EnableTuning) || config.tune_kd != config_.tune_kd
-            || config.tune_ki != config_.tune_ki || config.tune_kp != config_.tune_kp) {
-            p_err_ = 0.0; i_err_ = 0.0;
+        if((!config_.EnableTimesync && config.EnableTimesync) || config.tune_kd != config_.tune_kd
+            || config.tune_ki != config_.tune_ki || config.tune_kp != config_.tune_kp
+            || config.TimesyncMethod != config_.TimesyncMethod) {
+            p_err_ = 0.0; i_err_ = 0.0; first_frame_set_ = false;
         }
 
         ROS_INFO("Time offset: %f", config.TimeOffset / 1000.0);

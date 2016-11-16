@@ -61,6 +61,7 @@ private:
     /* TIMESTAMP TUNING */
     // - previous state variables
     double p_err_, i_err_;
+    bool first_frame_set_;
 
 };
 
