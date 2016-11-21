@@ -23,13 +23,21 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
     sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", opencv_image).toImageMsg();
 
+    UINT32 imageID = imgInfo->GetImageID();
+
     msg->header.frame_id=config_.frame_id;
-    msg->header.seq = imgInfo->GetImageID();
+    msg->header.seq = imageID;
 
 
     //UINT64 timestamp_seconds = m_imageInfo_->GetTimestamp();
     //UINT64 timestamp_nanoseconds = m_imageInfo_->GetCameraTimestamp();
-    msg->header.stamp = config_.EnableTimesync ? sync_timestamp(imgInfo) : ros::Time::now();
+
+    UINT64 c_cam_uint = imgInfo->GetCameraTimestamp();
+    ros::Time c_ros_big_rostime = ros::Time::now();
+    double c_ros_big = c_ros_big_rostime.toSec();
+    double c_cam = (double) c_cam_uint / 1000000.0;
+
+    msg->header.stamp = config_.EnableTimesync ? sync_timestamp(c_cam, c_ros_big, imageID) : c_ros_big_rostime;
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -40,53 +48,76 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
     cameraPublisher_.publish(*msg, cameraInfo_);
 
+    cameraInfo_.header.stamp = c_ros_big_rostime;
+    debugpublisher_rostime_.publish(cameraInfo_);
+
+    cameraInfo_.header.stamp = ros::Time(c_cam);
+    debugpublisher_camtime_.publish(cameraInfo_);
+
 }
 
-ros::Time SmartekCameraNode::sync_timestamp(const gige::IImageInfo& imgInfo){
+ros::Time SmartekCameraNode::sync_timestamp(double c_cam, double c_ros_big, UINT32 imageID){
     static double p_cam, p_ros, p_out;
     static int first_frame_id;
 
     static int frame_count;
-    static double running_t0_hypothesis, original_t0_hypothesis;
+    static double start_ros_time_big;
     static double cam0;
+    static Mediator<double> mediator( 5000 );
+    static HoltWintersSmoothFilter smooth_filter;
 
+    double running_t0_hypothesis;
 
-    UINT64 c_cam_uint = imgInfo->GetCameraTimestamp();
-    double c_ros = ros::Time::now().toSec();
-    double c_cam = (double) c_cam_uint / 1000000.0;
     if(!first_frame_set_) {
-        first_frame_id = imgInfo->GetImageID();
+        first_frame_id = imageID;
         first_frame_set_ = true;
 
         frame_count = 1;
         cam0 = c_cam;
-        original_t0_hypothesis = c_ros;
+        start_ros_time_big = c_ros_big;
     }
+    double c_ros = c_ros_big - start_ros_time_big;
 
     if(config_.TimesyncMethod == "MEH") {
 
         double time_cam = c_cam - cam0;
         double current_t0_hypothesis = c_ros - time_cam;
+        mediator.insert(current_t0_hypothesis);
         // recursive mean estimated hypothesis
-        running_t0_hypothesis = (double) (((frame_count-1)*((long double)running_t0_hypothesis) + current_t0_hypothesis)/frame_count);
+        if(frame_count>500) {
+            if(frame_count < 1500) {
+                smooth_filter.setAlfa(0.9);
+                smooth_filter.setBeta(0.99);
+            }
+            else {
+                smooth_filter.setAlfa(0.999);
+                smooth_filter.setBeta(0.9999);
+            }
+
+            smooth_filter.insert(mediator.getMedian());
+            running_t0_hypothesis = smooth_filter.getFiltered();
+        }
+        else {
+            running_t0_hypothesis = mediator.getMedian();
+        }
 
         double c_out = running_t0_hypothesis + time_cam;
 
         double c_err = p_out + (time_cam - p_cam) - c_ros; // zasto ne c_out - c_ros?!
-        ROS_INFO("delta_cam: %.6lf delta_ros: %.6lf delta_out: %.6lf frame_count: %d", time_cam - p_cam, c_ros - p_ros, c_out - p_out, frame_count);
-        ROS_INFO("CAM_TIMESTAMP: %.8lf UNCORR_STAMP: %.8lf CUR_HYP: %.8lf", time_cam, original_t0_hypothesis + time_cam, current_t0_hypothesis);
-        ROS_INFO("ROS_TIME: %.8lf STAMP: %.8lf ERR:%+.8lf RUN_HYP: %.8lf", c_ros, c_out, c_err, running_t0_hypothesis);
+        ROS_INFO("delta_cam: %.10lf delta_ros: %.10lf delta_out: %.10lf frame_count: %d", time_cam - p_cam, c_ros - p_ros, c_out - p_out, frame_count);
+        ROS_INFO("CAM_TIMESTAMP: %.10lf CUR_HYP: %.10lf", time_cam, current_t0_hypothesis);
+        ROS_INFO("ROS_TIME: %.10lf STAMP: %.10lf ERR: %+.10lf RUN_HYP: %.10lf", c_ros, c_out, c_err, running_t0_hypothesis);
 
         p_out = c_out;
         p_cam = time_cam;
         p_ros = c_ros;
         frame_count++;
 
-        return ros::Time(c_out + config_.TimeOffset);
+        return ros::Time(c_out + config_.TimeOffset + start_ros_time_big);
     }
 
     else if(config_.TimesyncMethod == "PID") {
-        if (imgInfo->GetImageID() < first_frame_id + 10) {
+        if (imageID < first_frame_id + 10) {
             p_cam = c_cam;
             p_out = c_ros;
         }
@@ -228,9 +259,12 @@ SmartekCameraNode::SmartekCameraNode() {
         pnp_->param<double>("NodeRate", nodeRate_, 50);
 
         pimageTransport_ = new image_transport::ImageTransport(*pnp_);
-        cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 1);
+        cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
 
         pcameraInfoManager_ = new camera_info_manager::CameraInfoManager(*pnp_, m_device_->GetSerialNumber());
+        debugpublisher_camtime_ = pnp_->advertise<sensor_msgs::CameraInfo>("camera_info_camtime",10);
+        debugpublisher_rostime_ = pnp_->advertise<sensor_msgs::CameraInfo>("camera_info_rostime",10);
+
         memAllocated_ = true;
 
         reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);

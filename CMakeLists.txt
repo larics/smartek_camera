@@ -14,7 +14,9 @@ INCLUDE_DIRECTORIES($ENV{CAMERA_SDK_PATH}/include ${CMAKE_CURRENT_BINARY_DIR})
 set(smartek_camera_node_SRCS
         src/smartek_camera_node.cpp
         $ENV{CAMERA_SDK_PATH}/include/gige_cpp/GigEVisionSDK.cpp
-        include/smartek_camera_node.h)
+        include/smartek_camera_node.h
+        include/filters/Mediator.h
+        include/filters/HoltWinters.h)
 
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 include_directories(${catkin_INCLUDE_DIRS})

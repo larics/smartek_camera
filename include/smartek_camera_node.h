@@ -11,6 +11,8 @@
 #include <opencv2/opencv.hpp>
 #include <dynamic_reconfigure/server.h>
 #include <smartek_camera/SmartekCameraConfig.h>
+#include "filters/HoltWinters.h"
+#include "filters/Mediator.h"
 
 class SmartekCameraNode {
 
@@ -32,6 +34,7 @@ private:
     image_transport::ImageTransport *pimageTransport_;
     camera_info_manager::CameraInfoManager *pcameraInfoManager_;
     sensor_msgs::CameraInfo cameraInfo_;
+    ros::Publisher debugpublisher_rostime_, debugpublisher_camtime_;
     double nodeRate_;
     dynamic_reconfigure::Server<Config> 				reconfigureServer_;
     dynamic_reconfigure::Server<Config>::CallbackType 	reconfigureCallback_;
@@ -50,7 +53,7 @@ private:
     gige::IImageInfo m_imageInfo_;
 
     void ros_publish_gige_image(const gige::IImageBitmapInterface& img, const gige::IImageInfo& imgInfo );
-    ros::Time sync_timestamp(const gige::IImageInfo& imgInfo);
+    ros::Time sync_timestamp(double c_cam, double c_ros_big, UINT32 imageID);
 
 
     bool m_defaultGainNotSet_;
