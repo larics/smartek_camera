@@ -10,12 +10,21 @@
   <build_depend>image_transport</build_depend>
   <build_depend>message_generation</build_depend>
   <build_depend>opencv2</build_depend>
+  <build_depend>camera_info_manager</build_depend>
+  <build_depend>genmsg</build_depend>
   <build_depend>sensor_msgs</build_depend>
+  <build_depend>dynamic_reconfigure</build_depend>
+  <build_depend>timesync</build_depend>
 
   <run_depend>cv_bridge</run_depend>
   <run_depend>image_transport</run_depend>
   <run_depend>message_runtime</run_depend>
   <run_depend>opencv2</run_depend>
+  <run_depend>camera_info_manager</run_depend>
+  <run_depend>sensor_msgs</run_depend> 
+  <run_depend>dynamic_reconfigure</run_depend>
+  <run_depend>timesync</run_depend>
+ 
 
   <buildtool_depend>catkin</buildtool_depend>
 </package>

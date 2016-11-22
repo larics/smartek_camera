@@ -11,8 +11,7 @@
 #include <opencv2/opencv.hpp>
 #include <dynamic_reconfigure/server.h>
 #include <smartek_camera/SmartekCameraConfig.h>
-#include "filters/HoltWinters.h"
-#include "filters/Mediator.h"
+#include <timesync/TimestampSynchronizer.h>
 
 class SmartekCameraNode {
 
@@ -53,18 +52,13 @@ private:
     gige::IImageInfo m_imageInfo_;
 
     void ros_publish_gige_image(const gige::IImageBitmapInterface& img, const gige::IImageInfo& imgInfo );
-    ros::Time sync_timestamp(double c_cam, double c_ros_big, UINT32 imageID);
 
+    TimestampSynchronizer stamp_synchronizer_;
 
     bool m_defaultGainNotSet_;
     double m_defaultGain_;
 
     bool memAllocated_;
-
-    /* TIMESTAMP TUNING */
-    // - previous state variables
-    double p_err_, i_err_;
-    bool first_frame_set_;
 
 };
 
