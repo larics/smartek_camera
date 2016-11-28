@@ -33,7 +33,7 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
     double c_ros_big = c_ros_big_rostime.toSec();
     double c_cam = (double) c_cam_uint / 1000000.0;
 
-    msg->header.stamp = config_.EnableTimesync ? stamp_synchronizer_.sync(c_cam, c_ros_big, imageID) : c_ros_big_rostime;
+    msg->header.stamp = config_.EnableTimesync ? pstampSynchronizer_->sync(c_cam, c_ros_big, imageID) : c_ros_big_rostime;
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -67,7 +67,6 @@ static std::string IpAddrToString(UINT32 ipAddress) {
     return stream.str();
 }
 
-
 void SmartekCameraNode::run() {
     ros::Rate rate(nodeRate_);
     while ( ros::ok() ) {
@@ -77,10 +76,27 @@ void SmartekCameraNode::run() {
     }
 }
 
+void SmartekCameraNode::initTimestampSynchronizer() {
+    defaultTSOptions_.useMedianFilter_ = true;
+    defaultTSOptions_.medianFilterWindow_ = 3000;
+    defaultTSOptions_.useHoltWinters_ = true;
+    defaultTSOptions_.alfa_HoltWinters_ = 1e-3;
+    defaultTSOptions_.beta_HoltWinters_ = 1e-4;
+    defaultTSOptions_.alfa_HoltWinters_early_ = 1e-1;
+    defaultTSOptions_.beta_HoltWinters_early_ = 0.0;
+    defaultTSOptions_.earlyClamp_ = true;
+    defaultTSOptions_.earlyClampWindow_ = 500;
+    defaultTSOptions_.timeOffset_ = 0.0;
+    defaultTSOptions_.initialB_HoltWinters_ = -3e-7;
+    defaultTSOptions_.nameSuffix = std::string();
+    pstampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTSOptions_);
+}
 
 SmartekCameraNode::SmartekCameraNode() {
-    pn_ = new ros::NodeHandle();
-    pnp_ = new ros::NodeHandle(std::string("~"));
+    pn_ = std::make_unique<ros::NodeHandle>();
+    pnp_ =std::make_unique<ros::NodeHandle>(std::string("~"));
+
+    initTimestampSynchronizer();
 
     serialNumber_ = pnp_->param<std::string>("SerialNumber", std::string());
 
@@ -154,19 +170,16 @@ SmartekCameraNode::SmartekCameraNode() {
         if(serialNumber_.size() > 0)
             ROS_ERROR_STREAM("Requested camera with serial number " << serialNumber_);
         ros::requestShutdown();
-        memAllocated_ = false;
     }
     else {
         pnp_->param<double>("NodeRate", nodeRate_, 50);
 
-        pimageTransport_ = new image_transport::ImageTransport(*pnp_);
+        pimageTransport_ = std::make_unique<image_transport::ImageTransport>(*pnp_);
         cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
 
-        pcameraInfoManager_ = new camera_info_manager::CameraInfoManager(*pnp_, m_device_->GetSerialNumber());
+        pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(*pnp_, m_device_->GetSerialNumber());
         debugpublisher_camtime_ = pnp_->advertise<sensor_msgs::CameraInfo>("camera_info_camtime",10);
         debugpublisher_rostime_ = pnp_->advertise<sensor_msgs::CameraInfo>("camera_info_rostime",10);
-
-        memAllocated_ = true;
 
         reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
         reconfigureServer_.setCallback(reconfigureCallback_);
@@ -188,6 +201,10 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
         ROS_INFO("New gain: %.2lf", config.Gain);
         ROS_INFO("New acquisition framerate: %.2lf", config.AcquisitionFrameRate);
         ROS_INFO("Timestamp tuning %s", config.EnableTimesync ? "ENABLED" : "DISABLED");
+
+        if(config.EnableTimesync && !config_.EnableTimesync) {
+            initTimestampSynchronizer();
+        }
 
         m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
         m_device_->CommandNodeExecute("AcquisitionStart");
@@ -212,14 +229,6 @@ SmartekCameraNode::~SmartekCameraNode() {
 
     gige::ExitImageProcAPI();
     gige::ExitGigEVisionAPI();
-
-    if(memAllocated_) {
-        delete pimageTransport_;
-        delete pcameraInfoManager_;
-    }
-
-    delete pn_;
-    delete pnp_;
 }
 
 void SmartekCameraNode::processFrames() {

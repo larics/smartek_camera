@@ -27,11 +27,11 @@ private:
 
     Config config_;
 
-    ros::NodeHandle *pn_;
-    ros::NodeHandle *pnp_;
+    std::unique_ptr<ros::NodeHandle> pn_;
+    std::unique_ptr<ros::NodeHandle> pnp_;
     image_transport::CameraPublisher cameraPublisher_;
-    image_transport::ImageTransport *pimageTransport_;
-    camera_info_manager::CameraInfoManager *pcameraInfoManager_;
+    std::unique_ptr<image_transport::ImageTransport> pimageTransport_;
+    std::unique_ptr<camera_info_manager::CameraInfoManager> pcameraInfoManager_;
     sensor_msgs::CameraInfo cameraInfo_;
     ros::Publisher debugpublisher_rostime_, debugpublisher_camtime_;
     double nodeRate_;
@@ -53,13 +53,12 @@ private:
 
     void ros_publish_gige_image(const gige::IImageBitmapInterface& img, const gige::IImageInfo& imgInfo );
 
-    TimestampSynchronizer stamp_synchronizer_;
+    TimestampSynchronizer::Options defaultTSOptions_;
+    std::unique_ptr<TimestampSynchronizer> pstampSynchronizer_;
+    void initTimestampSynchronizer();
 
     bool m_defaultGainNotSet_;
     double m_defaultGain_;
-
-    bool memAllocated_;
-
 };
 
 

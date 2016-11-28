@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.9)
 project(smartek_camera)
 
 find_package(catkin REQUIRED COMPONENTS cv_bridge genmsg image_transport camera_info_manager sensor_msgs dynamic_reconfigure timesync)
-set(CMAKE_CXX_FLAGS "-std=c++11")
+set(CMAKE_CXX_FLAGS "-std=c++14")
 
 generate_dynamic_reconfigure_options(cfg/SmartekCamera.cfg)
 
