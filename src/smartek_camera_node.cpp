@@ -1,14 +1,23 @@
 #include "smartek_camera_node.h"
-
 int main ( int argc, char **argv ) {
 
     ros::init(argc, argv, "camera");
     SmartekCameraNode().run();
-
     return 0;
 }
 
-void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface& img, const gige::IImageInfo& imgInfo ) {
+/*! Publish an image obtained from the GigEVision API
+ *
+ * \param img the image to be published
+ * \param imgInfo the object from which the frame number and sensor timestamp are read
+ *
+ */
+void SmartekCameraNode::publishGigeImage(const gige::IImageBitmapInterface &img, const gige::IImageInfo &imgInfo) {
+
+    double currentRosTime = ros::Time::now().toSec();
+    UINT64 currentCamTime_uint = imgInfo->GetCameraTimestamp();
+    double currentCamTime = (double) currentCamTime_uint / 1000000.0;
+
 
     UINT32 srcPixelType;
     UINT32 srcWidth, srcHeight;
@@ -18,22 +27,18 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
 
     UINT32 lineSize = img.GetLineSize();
 
-    // construct an openCV image sharing memory with GigE
-    cv::Mat opencv_image(srcHeight, srcWidth, config_.SmartekPipeline ? CV_8UC4 : CV_8UC1, (void *) img.GetRawData(), lineSize);
+    // construct an openCV image which shares memory with the GigE image
+    cv::Mat cvImage(srcHeight, srcWidth, config_.SmartekPipeline ? CV_8UC4 : CV_8UC1, (void *) img.GetRawData(), lineSize);
+    // ...then, build an image sensor message from the openCV image
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", cvImage).toImageMsg();
 
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", opencv_image).toImageMsg();
-
-    UINT32 imageID = imgInfo->GetImageID();
+    UINT32 seq = imgInfo->GetImageID();
 
     msg->header.frame_id=config_.frame_id;
-    msg->header.seq = imageID;
+    msg->header.seq = seq;
 
-    UINT64 c_cam_uint = imgInfo->GetCameraTimestamp();
-    ros::Time c_ros_big_rostime = ros::Time::now();
-    double c_ros_big = c_ros_big_rostime.toSec();
-    double c_cam = (double) c_cam_uint / 1000000.0;
-
-    msg->header.stamp = config_.EnableTimesync ? pstampSynchronizer_->sync(c_cam, c_ros_big, imageID) : c_ros_big_rostime;
+    msg->header.stamp = ros::Time(config_.EnableTimesync ? ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq)
+                                                         : currentRosTime);
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -43,60 +48,59 @@ void SmartekCameraNode::ros_publish_gige_image(const gige::IImageBitmapInterface
     cameraInfo_.height = srcHeight;
 
     cameraPublisher_.publish(*msg, cameraInfo_);
-
-    cameraInfo_.header.stamp = c_ros_big_rostime;
-    debugpublisher_rostime_.publish(cameraInfo_);
-
-    cameraInfo_.header.stamp = ros::Time(c_cam);
-    debugpublisher_camtime_.publish(cameraInfo_);
-
 }
 
-// IPv4 address conversion to string
+/*! IPv4 address conversion to string
+ *
+ * \param ipAddress the IP address in integer form
+ */
 static std::string IpAddrToString(UINT32 ipAddress) {
-    std::stringstream stream;
-    UINT32 temp1, temp2, temp3, temp4;
+    std::stringstream outStream;
+    UINT32 part1, part2, part3, part4;
 
-    temp1 = ((ipAddress >> 24) & 0xFF);
-    temp2 = ((ipAddress >> 16) & 0xFF);
-    temp3 = ((ipAddress >> 8) & 0xFF);
-    temp4 = ((ipAddress) & 0xFF);
+    part1 = ((ipAddress >> 24) & 0xFF);
+    part2 = ((ipAddress >> 16) & 0xFF);
+    part3 = ((ipAddress >> 8) & 0xFF);
+    part4 = ((ipAddress) & 0xFF);
 
-    stream << temp1 << "." << temp2 << "." << temp3 << "." << temp4;
+    outStream << part1 << "." << part2 << "." << part3 << "." << part4;
 
-    return stream.str();
+    return outStream.str();
 }
 
 void SmartekCameraNode::run() {
-    ros::Rate rate(nodeRate_);
     while ( ros::ok() ) {
         processFrames();
         ros::spinOnce();
-        rate.sleep();
     }
 }
 
+/*! Set the default parameters of the TimestampSynchronizer class
+ *  and constructs an instance.
+ */
 void SmartekCameraNode::initTimestampSynchronizer() {
-    defaultTSOptions_.useMedianFilter_ = true;
-    defaultTSOptions_.medianFilterWindow_ = 3000;
-    defaultTSOptions_.useHoltWinters_ = true;
-    defaultTSOptions_.alfa_HoltWinters_ = 1e-3;
-    defaultTSOptions_.beta_HoltWinters_ = 1e-4;
-    defaultTSOptions_.alfa_HoltWinters_early_ = 1e-1;
-    defaultTSOptions_.beta_HoltWinters_early_ = 0.0;
-    defaultTSOptions_.earlyClamp_ = true;
-    defaultTSOptions_.earlyClampWindow_ = 500;
-    defaultTSOptions_.timeOffset_ = 0.0;
-    defaultTSOptions_.initialB_HoltWinters_ = -3e-7;
-    defaultTSOptions_.nameSuffix = std::string();
-    pstampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTSOptions_);
+    defaultTimesyncOptions_.useMedianFilter = true;
+    defaultTimesyncOptions_.medianFilterWindow = 3000;
+    defaultTimesyncOptions_.useHoltWinters = true;
+    defaultTimesyncOptions_.alfa_HoltWinters = 1e-3;
+    defaultTimesyncOptions_.beta_HoltWinters = 1e-4;
+    defaultTimesyncOptions_.alfa_HoltWinters_early = 1e-1;
+    defaultTimesyncOptions_.beta_HoltWinters_early = 0.0;
+    defaultTimesyncOptions_.earlyClamp = true;
+    defaultTimesyncOptions_.earlyClampWindow = 500;
+    defaultTimesyncOptions_.timeOffset = 0.0;
+    defaultTimesyncOptions_.initialB_HoltWinters = -3e-7;
+    defaultTimesyncOptions_.nameSuffix = std::string();
+    ptimestampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTimesyncOptions_);
 }
 
 SmartekCameraNode::SmartekCameraNode() {
     pn_ = std::make_unique<ros::NodeHandle>();
     pnp_ =std::make_unique<ros::NodeHandle>(std::string("~"));
 
-    initTimestampSynchronizer();
+    if(config_.EnableTimesync) {
+        initTimestampSynchronizer();
+    }
 
     serialNumber_ = pnp_->param<std::string>("SerialNumber", std::string());
 
@@ -105,7 +109,7 @@ SmartekCameraNode::SmartekCameraNode() {
     gige::IGigEVisionAPI gigeVisionApi = gige::GetGigEVisionAPI();
     gige::InitImageProcAPI();
     m_imageProcApi_ = gige::GetImageProcAPI();
-    cameraConnected_ = false;
+    isCameraConnected_ = false;
 
     if (!gigeVisionApi->IsUsingKernelDriver()) {
         ROS_WARN("!!! Warning: Smartek Filter Driver not loaded.");
@@ -148,38 +152,34 @@ SmartekCameraNode::SmartekCameraNode() {
             m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
             m_device_->CommandNodeExecute("AcquisitionStart");
 
-            double exposure, gain, acquisitionframerate;
-            m_device_->GetFloatNodeValue("ExposureTime", exposure);
-            ROS_INFO("Exposure: %.2lf", exposure);
+            double currentExposure, currentGain, currentAcquisitionFramerate;
+            m_device_->GetFloatNodeValue("ExposureTime", currentExposure);
+            ROS_INFO("Exposure: %.2lf", currentExposure);
 
-            m_device_->GetFloatNodeValue("Gain", gain);
-            ROS_INFO("Gain: %.2lf", gain);
+            m_device_->GetFloatNodeValue("Gain", currentGain);
+            ROS_INFO("Gain: %.2lf", currentGain);
 
-            m_device_->GetFloatNodeValue("AcquisitionFramerate", acquisitionframerate);
-            ROS_INFO("Acquisition framerate: %.2lf", acquisitionframerate);
+            m_device_->GetFloatNodeValue("AcquisitionFrameRate", currentAcquisitionFramerate);
+            ROS_INFO("Acquisition framerate: %.2lf", currentAcquisitionFramerate);
 
-            ROS_INFO("Timestamp tuning %s", config_.EnableTimesync ? "ENABLED" : "DISABLED");
+            ROS_INFO("Timesync %s", config_.EnableTimesync ? "ENABLED" : "DISABLED");
 
             //m_defaultGainNotSet_ = true;
             //m_defaultGain_ = 0.0;
-            cameraConnected_ = true;
+            isCameraConnected_ = true;
         }
     }
-    if (!cameraConnected_) {
+    if (!isCameraConnected_) {
         ROS_ERROR("No camera connected!");
         if(serialNumber_.size() > 0)
             ROS_ERROR_STREAM("Requested camera with serial number " << serialNumber_);
         ros::requestShutdown();
     }
     else {
-        pnp_->param<double>("NodeRate", nodeRate_, 50);
-
         pimageTransport_ = std::make_unique<image_transport::ImageTransport>(*pnp_);
         cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
 
         pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(*pnp_, m_device_->GetSerialNumber());
-        debugpublisher_camtime_ = pnp_->advertise<sensor_msgs::CameraInfo>("camera_info_camtime",10);
-        debugpublisher_rostime_ = pnp_->advertise<sensor_msgs::CameraInfo>("camera_info_rostime",10);
 
         reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
         reconfigureServer_.setCallback(reconfigureCallback_);
@@ -187,7 +187,7 @@ SmartekCameraNode::SmartekCameraNode() {
 }
 
 void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
-    if(cameraConnected_) {
+    if(isCameraConnected_) {
         ROS_INFO("Reconfiguring camera");
 
         m_device_->CommandNodeExecute("AcquisitionStop");
@@ -195,13 +195,15 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
 
         m_device_->SetFloatNodeValue("ExposureTime", config.ExposureTime);
         m_device_->SetFloatNodeValue("Gain", config.Gain);
-        m_device_->SetFloatNodeValue("AcquisitionFrameRate", config.AcquisitionFrameRate);
+        // the property in the GigEVision api is "AcqusitionFrameRate", with a capital R
+        m_device_->SetFloatNodeValue("AcquisitionFrameRate", config.AcquisitionFramerate);
 
         ROS_INFO("New exposure: %.2lf", config.ExposureTime);
         ROS_INFO("New gain: %.2lf", config.Gain);
-        ROS_INFO("New acquisition framerate: %.2lf", config.AcquisitionFrameRate);
-        ROS_INFO("Timestamp tuning %s", config.EnableTimesync ? "ENABLED" : "DISABLED");
+        ROS_INFO("New acquisition framerate: %.2lf", config.AcquisitionFramerate);
+        ROS_INFO("Timesync %s", config.EnableTimesync ? "ENABLED" : "DISABLED");
 
+        // reinitialize timesync if it has just been enabled
         if(config.EnableTimesync && !config_.EnableTimesync) {
             initTimestampSynchronizer();
         }
@@ -211,7 +213,6 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
 
         config_ = config;
     }
-
 }
 
 SmartekCameraNode::~SmartekCameraNode() {
@@ -232,26 +233,36 @@ SmartekCameraNode::~SmartekCameraNode() {
 }
 
 void SmartekCameraNode::processFrames() {
+    bool gotImage = false;
+
     if (m_device_.IsValid() && m_device_->IsConnected()) {
-        if (!m_device_->IsBufferEmpty()) {
+        if(m_device_->WaitForImage(1.0)) {
+            if (!m_device_->IsBufferEmpty()) {
 
-            m_device_->GetImageInfo(&m_imageInfo_);
+                m_device_->GetImageInfo(&m_imageInfo_);
 
-            if (m_imageInfo_ != NULL) {
-                if(config_.SmartekPipeline) {
-                    m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_,
-                                                      m_colorPipelineParams_, m_colorPipelineResults_);
-                    ros_publish_gige_image(gige::IImageBitmapInterface(m_colorPipelineBitmap_), m_imageInfo_);
-                } else
-                    ros_publish_gige_image(gige::IImageBitmapInterface(m_imageInfo_), m_imageInfo_);
+                if (m_imageInfo_ != NULL) {
+                    gotImage = true;
 
+                    if (config_.SmartekPipeline) {
+                        m_imageProcApi_->ExecuteAlgorithm(m_colorPipelineAlg_, m_imageInfo_, m_colorPipelineBitmap_,
+                                                          m_colorPipelineParams_, m_colorPipelineResults_);
+                        publishGigeImage(gige::IImageBitmapInterface(m_colorPipelineBitmap_), m_imageInfo_);
+                    } else
+                        publishGigeImage(gige::IImageBitmapInterface(m_imageInfo_), m_imageInfo_);
+
+                }
+
+                // remove (pop) image from image buffer
+                m_device_->PopImage(m_imageInfo_);
+                // empty buffer
+                m_device_->ClearImageBuffer();
             }
-
-            // remove (pop) image from image buffer
-            m_device_->PopImage(m_imageInfo_);
-            // empty buffer
-            m_device_->ClearImageBuffer();
         }
+    }
+
+    if(!gotImage){
+        ROS_ERROR("Image not received!");
     }
 }
 
