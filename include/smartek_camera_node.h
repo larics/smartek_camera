@@ -24,9 +24,7 @@
  *                      False: use system time (can be very noisy).
  */
 
-
-
-#include "gige_cpp/GigEVisionSDK.h"
+#include <gige_cpp/GigEVisionSDK.h>
 #include <ros/ros.h>
 #include <camera_info_manager/camera_info_manager.h>
 #include <image_transport/image_transport.h>

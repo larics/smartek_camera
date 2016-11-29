@@ -1,10 +1,5 @@
 #include "smartek_camera_node.h"
-int main ( int argc, char **argv ) {
 
-    ros::init(argc, argv, "camera");
-    SmartekCameraNode().run();
-    return 0;
-}
 
 /*! Publish an image obtained from the GigEVision API
  *
@@ -69,7 +64,7 @@ static std::string IpAddrToString(UINT32 ipAddress) {
 }
 
 void SmartekCameraNode::run() {
-    while ( ros::ok() ) {
+    while ( ros::ok() && isCameraConnected_ ) {
         processFrames();
         ros::spinOnce();
     }
@@ -120,6 +115,7 @@ SmartekCameraNode::SmartekCameraNode() {
     m_colorPipelineAlg_->CreateResults(&m_colorPipelineResults_);
     m_imageProcApi_->CreateBitmap(&m_colorPipelineBitmap_);
 
+    ROS_INFO("Beginning device discovery...");
     gigeVisionApi->FindAllDevices(3.0);
     gige::DevicesList devices = gigeVisionApi->GetAllDevices();
 
@@ -141,7 +137,8 @@ SmartekCameraNode::SmartekCameraNode() {
 
         if (m_device_ != NULL && m_device_->Connect()) {
             UINT32 address = m_device_->GetIpAddress();
-            ROS_INFO_STREAM("IP address: " << IpAddrToString(address));
+            ROS_INFO_STREAM("Device IP address: " << IpAddrToString(address));
+            ROS_INFO_STREAM("Device serial number: " << m_device_->GetSerialNumber());
 
             // disable trigger mode
             m_device_->SetStringNodeValue("TriggerMode", "Off");
@@ -162,7 +159,7 @@ SmartekCameraNode::SmartekCameraNode() {
             m_device_->GetFloatNodeValue("AcquisitionFrameRate", currentAcquisitionFramerate);
             ROS_INFO("Acquisition framerate: %.2lf", currentAcquisitionFramerate);
 
-            ROS_INFO("Timesync %s", config_.EnableTimesync ? "ENABLED" : "DISABLED");
+            ROS_INFO("Timesync %s", config_.EnableTimesync ? "enabled" : "disabled");
 
             //m_defaultGainNotSet_ = true;
             //m_defaultGain_ = 0.0;
@@ -173,7 +170,6 @@ SmartekCameraNode::SmartekCameraNode() {
         ROS_ERROR("No camera connected!");
         if(serialNumber_.size() > 0)
             ROS_ERROR_STREAM("Requested camera with serial number " << serialNumber_);
-        ros::requestShutdown();
     }
     else {
         pimageTransport_ = std::make_unique<image_transport::ImageTransport>(*pnp_);
@@ -201,7 +197,7 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
         ROS_INFO("New exposure: %.2lf", config.ExposureTime);
         ROS_INFO("New gain: %.2lf", config.Gain);
         ROS_INFO("New acquisition framerate: %.2lf", config.AcquisitionFramerate);
-        ROS_INFO("Timesync %s", config.EnableTimesync ? "ENABLED" : "DISABLED");
+        ROS_INFO("Timesync %s", config.EnableTimesync ? "enabled" : "disabled");
 
         // reinitialize timesync if it has just been enabled
         if(config.EnableTimesync && !config_.EnableTimesync) {
@@ -233,10 +229,11 @@ SmartekCameraNode::~SmartekCameraNode() {
 }
 
 void SmartekCameraNode::processFrames() {
-    bool gotImage = false;
-
     if (m_device_.IsValid() && m_device_->IsConnected()) {
-        if(m_device_->WaitForImage(1.0)) {
+        bool gotImage = false;
+
+        // sleep until the next frame is received
+        if(m_device_->WaitForImage(10.0)) {
             if (!m_device_->IsBufferEmpty()) {
 
                 m_device_->GetImageInfo(&m_imageInfo_);
@@ -250,7 +247,6 @@ void SmartekCameraNode::processFrames() {
                         publishGigeImage(gige::IImageBitmapInterface(m_colorPipelineBitmap_), m_imageInfo_);
                     } else
                         publishGigeImage(gige::IImageBitmapInterface(m_imageInfo_), m_imageInfo_);
-
                 }
 
                 // remove (pop) image from image buffer
@@ -259,10 +255,28 @@ void SmartekCameraNode::processFrames() {
                 m_device_->ClearImageBuffer();
             }
         }
+        if(!gotImage){
+            ROS_ERROR("Image not received!");
+        }
+    }
+    else {
+        isCameraConnected_ = false;
+        ROS_ERROR("Camera disconnected!");
     }
 
-    if(!gotImage){
-        ROS_ERROR("Image not received!");
-    }
 }
 
+int main(int argc, char **argv) {
+
+    ros::init(argc, argv, "camera");
+    ros::start();
+
+    // if the smartek camera node quits for some reason, e.g. camera disconnected,
+    // try to construct it again until the application receives an interrupt
+    while(ros::ok()) {
+        SmartekCameraNode().run();
+    }
+
+    ros::shutdown();
+    return 0;
+}
