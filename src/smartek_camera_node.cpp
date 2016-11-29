@@ -1,5 +1,23 @@
 #include "smartek_camera_node.h"
 
+/*! Set the default parameters of the TimestampSynchronizer class
+ *  and construct an instance.
+ */
+void SmartekCameraNode::initTimestampSynchronizer() {
+    defaultTimesyncOptions_.useMedianFilter = true;
+    defaultTimesyncOptions_.medianFilterWindow = 2500;
+    defaultTimesyncOptions_.useHoltWinters = true;
+    defaultTimesyncOptions_.alfa_HoltWinters = 3e-3;
+    defaultTimesyncOptions_.beta_HoltWinters = 2e-3;
+    defaultTimesyncOptions_.alfa_HoltWinters_early = 1e-1;
+    defaultTimesyncOptions_.beta_HoltWinters_early = 0.0;
+    defaultTimesyncOptions_.earlyClamp = true;
+    defaultTimesyncOptions_.earlyClampWindow = 500;
+    defaultTimesyncOptions_.timeOffset = 0.0;
+    defaultTimesyncOptions_.initialB_HoltWinters = -3e-7;
+    defaultTimesyncOptions_.nameSuffix = std::string();
+    ptimestampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTimesyncOptions_);
+}
 
 /*! Publish an image obtained from the GigEVision API
  *
@@ -68,25 +86,6 @@ void SmartekCameraNode::run() {
         processFrames();
         ros::spinOnce();
     }
-}
-
-/*! Set the default parameters of the TimestampSynchronizer class
- *  and constructs an instance.
- */
-void SmartekCameraNode::initTimestampSynchronizer() {
-    defaultTimesyncOptions_.useMedianFilter = true;
-    defaultTimesyncOptions_.medianFilterWindow = 3000;
-    defaultTimesyncOptions_.useHoltWinters = true;
-    defaultTimesyncOptions_.alfa_HoltWinters = 1e-3;
-    defaultTimesyncOptions_.beta_HoltWinters = 1e-4;
-    defaultTimesyncOptions_.alfa_HoltWinters_early = 1e-1;
-    defaultTimesyncOptions_.beta_HoltWinters_early = 0.0;
-    defaultTimesyncOptions_.earlyClamp = true;
-    defaultTimesyncOptions_.earlyClampWindow = 500;
-    defaultTimesyncOptions_.timeOffset = 0.0;
-    defaultTimesyncOptions_.initialB_HoltWinters = -3e-7;
-    defaultTimesyncOptions_.nameSuffix = std::string();
-    ptimestampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTimesyncOptions_);
 }
 
 SmartekCameraNode::SmartekCameraNode() {
