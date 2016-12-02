@@ -1,3 +1,9 @@
+#include <cmath>
+#include <sstream>
+
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
+
 #include "smartek_camera_node.h"
 
 /*! Set the default parameters of the TimestampSynchronizer class
@@ -15,7 +21,6 @@ void SmartekCameraNode::initTimestampSynchronizer() {
     defaultTimesyncOptions_.earlyClampWindow = 500;
     defaultTimesyncOptions_.timeOffset = 0.0;
     defaultTimesyncOptions_.initialB_HoltWinters = -3e-7;
-    defaultTimesyncOptions_.nameSuffix = std::string();
     ptimestampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTimesyncOptions_);
 }
 
@@ -28,9 +33,9 @@ void SmartekCameraNode::initTimestampSynchronizer() {
 void SmartekCameraNode::publishGigeImage(const gige::IImageBitmapInterface &img, const gige::IImageInfo &imgInfo) {
 
     double currentRosTime = ros::Time::now().toSec();
-    UINT64 currentCamTime_uint = imgInfo->GetCameraTimestamp();
-    double currentCamTime = (double) currentCamTime_uint / 1000000.0;
 
+    double currentCamTime = static_cast<double>(imgInfo->GetCameraTimestamp()) / 1000000.0;
+    UINT32 seq = imgInfo->GetImageID();
 
     UINT32 srcPixelType;
     UINT32 srcWidth, srcHeight;
@@ -45,11 +50,8 @@ void SmartekCameraNode::publishGigeImage(const gige::IImageBitmapInterface &img,
     // ...then, build an image sensor message from the openCV image
     sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", cvImage).toImageMsg();
 
-    UINT32 seq = imgInfo->GetImageID();
-
-    msg->header.frame_id=config_.frame_id;
+    msg->header.frame_id=frame_id_;
     msg->header.seq = seq;
-
     msg->header.stamp = ros::Time(config_.EnableTimesync ? ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq)
                                                          : currentRosTime);
 
@@ -89,14 +91,16 @@ void SmartekCameraNode::run() {
 }
 
 SmartekCameraNode::SmartekCameraNode() {
-    pn_ = std::make_unique<ros::NodeHandle>();
-    pnp_ =std::make_unique<ros::NodeHandle>(std::string("~"));
+    n_ = ros::NodeHandle();
+    np_ = ros::NodeHandle(std::string("~"));
+
+    frame_id_ = np_.param<std::string>("frame_id", "camera");
 
     if(config_.EnableTimesync) {
         initTimestampSynchronizer();
     }
 
-    serialNumber_ = pnp_->param<std::string>("SerialNumber", std::string());
+    serialNumber_ = np_.param<std::string>("SerialNumber", std::string());
 
     m_device_ = NULL;
     gige::InitGigEVisionAPI();
@@ -120,15 +124,18 @@ SmartekCameraNode::SmartekCameraNode() {
 
     if (devices.size() > 0) {
 
-        if(serialNumber_.size() > 0) {
+        // if the user has requested a camera with specific serial number,
+        // loop through all discovered devices until we find it
+        if(!serialNumber_.empty()) {
             for(int i = 0; i < devices.size(); i++)
                 if(devices[i]->GetSerialNumber() == serialNumber_) {
                     m_device_ = devices[i];
                     break;
                 }
             }
-        else
+        else {
             m_device_ = devices[0];
+        }
 
         // to change number of images in image buffer from default 10 images
         // call SetImageBufferFrameCount() method before Connect() method
@@ -163,21 +170,21 @@ SmartekCameraNode::SmartekCameraNode() {
             //m_defaultGainNotSet_ = true;
             //m_defaultGain_ = 0.0;
             isCameraConnected_ = true;
+
+            pimageTransport_ = std::make_unique<image_transport::ImageTransport>(np_);
+            cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
+
+            pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(np_, m_device_->GetSerialNumber());
+
+            reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
+            reconfigureServer_.setCallback(reconfigureCallback_);
         }
     }
+
     if (!isCameraConnected_) {
         ROS_ERROR("No camera connected!");
-        if(serialNumber_.size() > 0)
+        if(!serialNumber_.empty())
             ROS_ERROR_STREAM("Requested camera with serial number " << serialNumber_);
-    }
-    else {
-        pimageTransport_ = std::make_unique<image_transport::ImageTransport>(*pnp_);
-        cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
-
-        pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(*pnp_, m_device_->GetSerialNumber());
-
-        reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
-        reconfigureServer_.setCallback(reconfigureCallback_);
     }
 }
 
@@ -185,6 +192,7 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
     if(isCameraConnected_) {
         ROS_INFO("Reconfiguring camera");
 
+        // stop acquisition
         m_device_->CommandNodeExecute("AcquisitionStop");
         m_device_->SetIntegerNodeValue("TLParamsLocked", 0);
 
@@ -203,6 +211,7 @@ void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
             initTimestampSynchronizer();
         }
 
+        // start acquisition
         m_device_->SetIntegerNodeValue("TLParamsLocked", 1);
         m_device_->CommandNodeExecute("AcquisitionStart");
 

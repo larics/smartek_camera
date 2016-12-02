@@ -1,9 +1,9 @@
 <package>
   <name>smartek_camera</name>
-  <version>0.0.0</version>
-  <description>Node for publishing frames from the Smartek camera</description>
+  <version>1.0.0</version>
+  <description>Node for publishing frames from a Smartek camera</description>
   <author>Juraj Oršulić</author>
-  <maintainer email="juraj.orsulic@gmail.com">Juraj Oršulić</maintainer>
+  <maintainer email="juraj.orsulic@fer.hr">Juraj Oršulić</maintainer>
   <license>Apache 2.0</license>
 
   <build_depend>cv_bridge</build_depend>
@@ -25,6 +25,5 @@
   <run_depend>dynamic_reconfigure</run_depend>
   <run_depend>timesync</run_depend>
  
-
   <buildtool_depend>catkin</buildtool_depend>
 </package>

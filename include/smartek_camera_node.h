@@ -8,6 +8,8 @@
  *
  * - \b image_raw The image received from the camera, either in bayer_rg8 or bgra8 formats,
  *      depending whether the Smartek image processing pipeline is used.
+ * - \b timestamp_synchronizer/debug_info Debug topic from the TimestampSynchronizer class. Can be used to
+        restamp bags using different timestamp correction filter settings.
  *
  * \par Parameters
  *
@@ -23,19 +25,15 @@
  * - \b ~EnableTimesync True: use timestamp synchronization provided by the timesync package.
  *                      False: use system time (can be very noisy).
  */
-
-#include <gige_cpp/GigEVisionSDK.h>
 #include <ros/ros.h>
 #include <camera_info_manager/camera_info_manager.h>
 #include <image_transport/image_transport.h>
-#include <cv_bridge/cv_bridge.h>
-#include <sstream>
-#include <math.h>
-#include <opencv2/opencv.hpp>
 #include <dynamic_reconfigure/server.h>
-#include <smartek_camera/SmartekCameraConfig.h>
 #include <timesync/TimestampSynchronizer.h>
 
+#include <smartek_camera/SmartekCameraConfig.h>
+
+#include <gige_cpp/GigEVisionSDK.h>
 
 class SmartekCameraNode {
 
@@ -56,11 +54,15 @@ public:
 private:
     typedef smartek_camera::SmartekCameraConfig Config;
     void reconfigure_callback(Config& config, uint32_t level);
+    void publishGigeImage(const gige::IImageBitmapInterface &img, const gige::IImageInfo &imgInfo);
+    void processFrames();
+    void initTimestampSynchronizer();
 
     Config config_;
+    std::string frame_id_; // ROS tf frame id
 
-    std::unique_ptr<ros::NodeHandle> pn_;
-    std::unique_ptr<ros::NodeHandle> pnp_;
+    ros::NodeHandle n_;
+    ros::NodeHandle np_;
 
     image_transport::CameraPublisher cameraPublisher_;
     std::unique_ptr<image_transport::ImageTransport> pimageTransport_;
@@ -83,16 +85,11 @@ private:
     gige::IImageBitmap m_colorPipelineBitmap_;
     gige::IImageInfo m_imageInfo_;
 
-    void publishGigeImage(const gige::IImageBitmapInterface &img, const gige::IImageInfo &imgInfo);
-
     TimestampSynchronizer::Options defaultTimesyncOptions_;
     std::unique_ptr<TimestampSynchronizer> ptimestampSynchronizer_;
-    void initTimestampSynchronizer();
 
-    bool m_defaultGainNotSet_;
+    bool m_defaultGainNotSet_; // currently not used, maybe necessary for auto-gain control
     double m_defaultGain_;
-    void processFrames();
 };
-
 
 #endif //SMARTEK_CAMERA_NODE_H
