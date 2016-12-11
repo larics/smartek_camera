@@ -10,7 +10,7 @@ generate_dynamic_reconfigure_options(cfg/SmartekCamera.cfg)
 
 set(smartek_camera_node_SRCS
         src/smartek_camera_node.cpp
-        $ENV{CAMERA_SDK_PATH}/include/gige_cpp/GigEVisionSDK.cpp)
+        $ENV{SMARTEK_SDK_PATH}/include/gige_cpp/GigEVisionSDK.cpp)
 
 catkin_package(
   INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
