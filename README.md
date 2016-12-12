@@ -23,4 +23,5 @@ The package is still under development, i.e. it has not been released into offic
 
 ## Testing the package
 
-TODO...
+- invoke `rosrun image_view image_view image:=/camera/image_raw` to look at the live feed from the camera
+- if necessary, run `rqt_reconfigure` (or `dynparam` from `dynamic_reconfigure`) to change the parameters of the camera such as gain and exposure
