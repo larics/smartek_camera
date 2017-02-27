@@ -12,6 +12,8 @@ The driver has been tested with ROS Kinetic on Ubuntu 16.04 64-bit.
 
 Download the [Smartek GigEVision SDK](https://smartek.vision/header-menu/media-center/) and install it [following the official instructions](https://smartek.vision/fileadmin/SMARTEKVision_GigEVisionSDK_Linux_Readme.txt).
 
+Another prerequisite is having the [`timesync`](https://github.com/larics/timesync_ros) class in your Catkin workspace.
+
 **Note:** The "Driver Installation" section of the SDK installation guide has to be repeated after every kernel update!
 
 ### Installation procedure
