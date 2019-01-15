@@ -1,30 +1,33 @@
-cmake_minimum_required(VERSION 2.8.9)
+cmake_minimum_required(VERSION 3.9)
 project(smartek_camera)
 
-find_package(catkin REQUIRED COMPONENTS cv_bridge genmsg image_transport camera_info_manager sensor_msgs dynamic_reconfigure timesync)
-find_package(OpenCV)
+list (APPEND CMAKE_MODULE_PATH "$ENV{CAMERA_SUITE_PACKAGE}")
+
+find_package(catkin REQUIRED COMPONENTS
+        image_transport
+        timesync
+        sensor_msgs
+        )
+
+find_package(CameraSuite REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package( OpenCV REQUIRED )
 
 set(CMAKE_CXX_FLAGS "-std=c++14")
 
-generate_dynamic_reconfigure_options(cfg/SmartekCamera.cfg)
-
-set(smartek_camera_node_SRCS
-        src/smartek_camera_node.cpp
-        $ENV{CAMERA_SDK_PATH}/include/gige_cpp/GigEVisionSDK.cpp)
-
 catkin_package(
   INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
-  CATKIN_DEPENDS cv_bridge image_transport camera_info_manager sensor_msgs dynamic_reconfigure timesync
+  CATKIN_DEPENDS cv_bridge image_transport sensor_msgs timesync
   DEPENDS OpenCV)
 
 include_directories(
-  include 
-  $ENV{CAMERA_SDK_PATH}/include 
-  ${CMAKE_CURRENT_BINARY_DIR}
+  include
+  ${CAMERASUITE_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS})
 
-add_executable(smartek_camera_node ${smartek_camera_node_SRCS})
-target_link_libraries(smartek_camera_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} GigEVisionSDK)
+add_library(grabber STATIC src/Grabber.cpp ${CAMERASUITE_INCLUDE_DIRS}/smcs_cpp/CameraSDK.cpp)
+target_link_libraries(grabber ${CAMERASUITE_LIBRARY})
 
-add_dependencies(smartek_camera_node ${PROJECT_NAME}_gencfg ${catkin_EXPORTED_TARGETS})
+add_executable(smartek_camera_node src/smartek_camera_node.cpp)
+target_link_libraries(smartek_camera_node grabber ${OpenCV_LIBS} ${catkin_LIBRARIES})
