@@ -64,6 +64,18 @@ int Grabber::getNumberOfDevices(void) {
     return devices_.size();
 }
 
+int Grabber::getDeviceBySerialNumber(std::string serial_number) {
+    int i, device_num = -1;
+    std::string serial;
+
+    for (i = 0; i < devices_.size(); i++) {
+        serial = devices_[i]->GetSerialNumber();
+        if (!serial.compare(serial_number)) device_num = i;
+    }
+
+    return device_num;
+}
+
 int Grabber::connect(int device_num) {
     std::string text;
     INT64 int64Value;
@@ -78,7 +90,8 @@ int Grabber::connect(int device_num) {
         is_connected = 1;
         printf("Connected to the camera: %s %d \n", IpAddrToString(connected_device->GetIpAddress()).c_str(),
                connected_device->GetIpAddress());
-
+        text = connected_device->GetSerialNumber();
+        printf("SerialNumber: %s \n", text.c_str());
         if (connected_device->GetStringNodeValue("DeviceVendorName", text)) {
             printf("Device Vendor: %s \n", text.c_str());
         }

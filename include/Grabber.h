@@ -73,6 +73,8 @@ class Grabber {
          */
         void disconect(int device_num);
 
+        int getDeviceBySerialNumber(std::string serial_number);
+
 
         /**
          * @brief grabs an image.

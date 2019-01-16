@@ -66,9 +66,11 @@ void SmartekCameraNode::initTimestampSynchronizer() {
 }*/
 
 void SmartekCameraNode::run() {
-    while ( ros::ok() ) {
+    while ( ros::ok() && device_num_ != -1) {
 
         data_ = grabber_->grab(device_num_, w_, h_, c_);
+
+        printf("w: %d, h: %d, c: %d\n", w_, h_,c_);
 
         if (data_ != NULL ) {
             printf("Imamo slikeee!\n");
@@ -85,7 +87,7 @@ SmartekCameraNode::SmartekCameraNode():
         w_(0),
         h_(0),
         c_(0),
-        device_num_(0) {
+        device_num_(-1) {
 
     n_ = ros::NodeHandle();
     np_ = ros::NodeHandle(std::string("~"));
@@ -93,7 +95,10 @@ SmartekCameraNode::SmartekCameraNode():
     grabber_ = new Grabber();
 
     grabber_->findDevices();
-    grabber_->connect(device_num_);
+    device_num_ = grabber_->getDeviceBySerialNumber("10130000");
+    printf("device_num %d\n", device_num_);
+
+    if (device_num_ != -1) grabber_->connect(device_num_);
 
     if(is_time_sync_enabled_) {
         initTimestampSynchronizer();
