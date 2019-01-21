@@ -66,23 +66,27 @@ void SmartekCameraNode::initTimestampSynchronizer() {
 }*/
 
 void SmartekCameraNode::run() {
-    ros::Rate rate(10);
+    ros::Rate rate(100);
 
-    while ( ros::ok() && device_num_ != -1) {
+    cv::Mat im(2048, 2592, 16);
+    cv::namedWindow("w", 1);
+
+    while (ros::ok() && device_num_ != -1) {
         ros::spinOnce();
         data_ = grabber_->grab(device_num_, w_, h_, c_);
 
-        if (data_ != NULL ) {
-            printf("Slikica\n");
-            //publishImage(data_, w_, h_, c_);
-            free(data_);
+        if (data_ != NULL) {
+            //cv::Mat cvImage(h_, w_, CV_8UC4, (void *) data_);
+            publishImage(data_, w_, h_, c_);
+            //free(data_);
         }
+        //cv::waitKey(1);
 
         rate.sleep();
     }
 }
 
-void SmartekCameraNode::publishImage(float *data, int w, int h, int c) {
+void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c) {
     double currentRosTime = ros::Time::now().toSec();
     double currentCamTime = grabber_->getCameraTimestamp(device_num_) / 1000000.0;
     uint32_t seq = grabber_->getImageID(device_num_);
@@ -93,13 +97,14 @@ void SmartekCameraNode::publishImage(float *data, int w, int h, int c) {
     sensor_msgs::Image ros_image;
     cv_image.toImageMsg(ros_image);*/
 
-    cv::Mat cvImage(w, h, CV_8UC4, (void*)data);
+    cv::Mat cvImage(h, w, CV_8UC4, (void*)data);
+    //cv::imshow("w", cvImage);
 
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", cvImage).toImageMsg();
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgra8", cvImage).toImageMsg();
 
     msg->header.frame_id = frame_id_;
     msg->header.seq = seq;
-    msg->header.stamp = ros::Time(ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq));
+    msg->header.stamp = ros::Time(currentRosTime);//ros::Time(ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq));
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -111,6 +116,7 @@ void SmartekCameraNode::publishImage(float *data, int w, int h, int c) {
     cameraPublisher_.publish(*msg, cameraInfo_);
 
     //printf("Timestamp: %f\n", currentCamTime);
+    //printf("Seq: %d\n", seq);
     //cv::namedWindow( "Display window", cv::WINDOW_AUTOSIZE );
     //cv::imshow( "Display window", cvImage );
     //cv::waitKey(1);
@@ -132,7 +138,7 @@ SmartekCameraNode::SmartekCameraNode():
     grabber_ = new Grabber();
 
     grabber_->findDevices();
-    device_num_ = grabber_->getDeviceBySerialNumber("10000085");
+    device_num_ = grabber_->getDeviceBySerialNumber("10130000");
     printf("device_num %d\n", device_num_);
 
     if (device_num_ != -1) grabber_->connect(device_num_);
@@ -143,7 +149,7 @@ SmartekCameraNode::SmartekCameraNode():
 
     pimageTransport_ = std::make_unique<image_transport::ImageTransport>(np_);
     cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
-    pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(np_, std::string("10000085"));
+    pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(np_, std::string("10130000"));
 }
 
 SmartekCameraNode::~SmartekCameraNode() {

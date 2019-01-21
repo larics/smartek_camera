@@ -48,7 +48,7 @@ public:
 
 private:
     void initTimestampSynchronizer();
-    void publishImage(float *data, int w, int h, int c);
+    void publishImage(uint8_t *data, int w, int h, int c);
 
     bool is_time_sync_enabled_;
 
@@ -58,7 +58,7 @@ private:
     std::string frame_id_;
 
     Grabber *grabber_;
-    float *data_;
+    uint8_t *data_;
     int w_, h_, c_, device_num_;
 
     TimestampSynchronizer::Options defaultTimesyncOptions_;

@@ -170,10 +170,12 @@ uint32_t Grabber::getImageID(int device_num) {
     return image_id;
 }
 
-float *Grabber::grab(int device_num, int &w, int &h, int &c) {
+uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c) {
     smcs::IDevice connected_device;
     smcs::IImageInfo image_info;
-    float *im = NULL;
+    UINT32 src_width, src_height;
+    UINT32 src_pixel_type;
+    uint8_t *im = NULL;
 
     if (devices_.size() <= device_num) return im;
 
@@ -184,35 +186,35 @@ float *Grabber::grab(int device_num, int &w, int &h, int &c) {
             connected_device->GetImageInfo(&image_info);
             if (image_info != NULL) {
                 // white balance parameters
-                color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
+                //color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
 
-                color_pipeline_params_->SetIntegerNodeValue("PixelDecimation", 8);
+                //color_pipeline_params_->SetIntegerNodeValue("PixelDecimation", 8);
 
                 // rgb gain parameters
-                color_pipeline_params_->SetFloatNodeValue("RedGain", 1.0);
-                color_pipeline_params_->SetFloatNodeValue("GreenGain", 1.0);
-                color_pipeline_params_->SetFloatNodeValue("BlueGain", 2.35);
+                //color_pipeline_params_->SetFloatNodeValue("RedGain", 1.0);
+                //color_pipeline_params_->SetFloatNodeValue("GreenGain", 1.0);
+                //color_pipeline_params_->SetFloatNodeValue("BlueGain", 1.0);
 
                 // rgb gamma parameters
-                color_pipeline_params_->SetFloatNodeValue("RedGamma", 1.0);
-                color_pipeline_params_->SetFloatNodeValue("GreenGamma", 1.0);
-                color_pipeline_params_->SetFloatNodeValue("BlueGamma", 1.0);
+                //color_pipeline_params_->SetFloatNodeValue("RedGamma", 1.0);
+                //color_pipeline_params_->SetFloatNodeValue("GreenGamma", 1.0);
+                //color_pipeline_params_->SetFloatNodeValue("BlueGamma", 1.0);
 
                 // demosaic parameters
                 // border type, default smcs_IPBT_BILINEAR_BORDER
-                color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_BILINEAR_BORDER);
+                //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_BILINEAR_BORDER);
                 //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_COLORIZED_BORDER);
                 //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_BLACK_BORDER);
                 //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_CROP_BORDER);
-                color_pipeline_params_->SetBooleanNodeValue("EnableDemosaic", true);
+                //color_pipeline_params_->SetBooleanNodeValue("EnableDemosaic", true);
                 // demosaic type, default Bilinear
                 //color_pipeline_params_->SetStringNodeValue("DemosaicType", "Bilinear");
-                color_pipeline_params_->SetStringNodeValue("DemosaicType", "HQLinear");
+               // color_pipeline_params_->SetStringNodeValue("DemosaicType", "HQLinear");
                 //color_pipeline_params_->SetStringNodeValue("DemosaicType", "PixelGroup");
 
                 // color correction parameters
                 // color correction is not enabled by default
-                color_pipeline_params_->SetBooleanNodeValue("EnableColorCorrection", false);
+                //color_pipeline_params_->SetBooleanNodeValue("EnableColorCorrection", false);
                 // type of color correction, default Matrix3x3RGB
                 //color_pipeline_params_->SetStringNodeValue("ColorCorrectionType", "Matrix3x3RGB");
                 //color_pipeline_params_->SetStringNodeValue("ColorCorrectionType", "ColorGimp");
@@ -294,7 +296,13 @@ float *Grabber::grab(int device_num, int &w, int &h, int &c) {
                 //rezultati su spremljeni u color_pipeline_results_
                 // color_pipeline_results_->GetFloatNodeValue("RedGain", redGain);
 
-                im = dataFromImageBitmap(color_pipeline_bitmap_, w, h, c);
+                im = smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetRawData();
+                smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetPixelType(src_pixel_type);
+                smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetSize(src_width, src_height);
+                w = src_width;
+                h = src_height;
+                c = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)src_pixel_type) / 8;
+                //im = dataFromImageBitmap(color_pipeline_bitmap_, w, h, c);
             }
             connected_device->PopImage(image_info);
             connected_device->ClearImageBuffer();

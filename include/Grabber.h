@@ -89,7 +89,7 @@ class Grabber {
          * @param c address to variable where number of channels of the image should be stored.
          * @return pointer to data array.
          */
-        float *grab(int device_num, int &w, int &h, int &c);
+        uint8_t *grab(int device_num, int &w, int &h, int &c);
 };
 
 
