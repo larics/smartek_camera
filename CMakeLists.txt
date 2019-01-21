@@ -7,6 +7,8 @@ find_package(catkin REQUIRED COMPONENTS
         image_transport
         timesync
         sensor_msgs
+        camera_info_manager
+        cv_bridge
         )
 
 find_package(CameraSuite REQUIRED)
@@ -17,7 +19,7 @@ set(CMAKE_CXX_FLAGS "-std=c++14")
 
 catkin_package(
   INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
-  CATKIN_DEPENDS cv_bridge image_transport sensor_msgs timesync
+  CATKIN_DEPENDS cv_bridge image_transport sensor_msgs timesync camera_info_manager
   DEPENDS OpenCV)
 
 include_directories(

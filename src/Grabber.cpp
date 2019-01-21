@@ -70,6 +70,7 @@ int Grabber::getDeviceBySerialNumber(std::string serial_number) {
 
     for (i = 0; i < devices_.size(); i++) {
         serial = devices_[i]->GetSerialNumber();
+        printf("Serial: %s\n", serial);
         if (!serial.compare(serial_number)) device_num = i;
     }
 
@@ -129,6 +130,46 @@ void Grabber::disconect(int device_num) {
     devices_[device_num]->Disconnect();
 }
 
+uint64_t Grabber::getCameraTimestamp(int device_num) {
+    smcs::IDevice connected_device;
+    smcs::IImageInfo image_info;
+    uint64_t camera_timestamp = 0;
+
+
+    if (devices_.size() <= device_num) return camera_timestamp;
+
+    connected_device = devices_[device_num];
+
+    if (connected_device.IsValid() && connected_device->IsConnected()) {
+        if (!connected_device->IsBufferEmpty()) {
+            connected_device->GetImageInfo(&image_info);
+            camera_timestamp = image_info->GetCameraTimestamp();
+        }
+    }
+
+    return camera_timestamp;
+}
+
+uint32_t Grabber::getImageID(int device_num) {
+    smcs::IDevice connected_device;
+    smcs::IImageInfo image_info;
+    uint32_t image_id = 0;
+
+
+    if (devices_.size() <= device_num) return image_id;
+
+    connected_device = devices_[device_num];
+
+    if (connected_device.IsValid() && connected_device->IsConnected()) {
+        if (!connected_device->IsBufferEmpty()) {
+            connected_device->GetImageInfo(&image_info);
+            image_id = image_info->GetImageID();
+        }
+    }
+
+    return image_id;
+}
+
 float *Grabber::grab(int device_num, int &w, int &h, int &c) {
     smcs::IDevice connected_device;
     smcs::IImageInfo image_info;
@@ -142,7 +183,6 @@ float *Grabber::grab(int device_num, int &w, int &h, int &c) {
         if (!connected_device->IsBufferEmpty()) {
             connected_device->GetImageInfo(&image_info);
             if (image_info != NULL) {
-
                 // white balance parameters
                 color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
 

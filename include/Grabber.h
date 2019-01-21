@@ -75,6 +75,10 @@ class Grabber {
 
         int getDeviceBySerialNumber(std::string serial_number);
 
+        uint64_t getCameraTimestamp(int device_num);
+
+        uint32_t getImageID(int device_num);
+
 
         /**
          * @brief grabs an image.

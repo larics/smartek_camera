@@ -27,6 +27,7 @@
  */
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
+#include <camera_info_manager/camera_info_manager.h>
 #include <timesync/TimestampSynchronizer.h>
 #include <Grabber.h>
 
@@ -47,11 +48,14 @@ public:
 
 private:
     void initTimestampSynchronizer();
+    void publishImage(float *data, int w, int h, int c);
 
     bool is_time_sync_enabled_;
 
     ros::NodeHandle n_;
     ros::NodeHandle np_;
+
+    std::string frame_id_;
 
     Grabber *grabber_;
     float *data_;
@@ -59,6 +63,11 @@ private:
 
     TimestampSynchronizer::Options defaultTimesyncOptions_;
     std::unique_ptr<TimestampSynchronizer> ptimestampSynchronizer_;
+
+    image_transport::CameraPublisher cameraPublisher_;
+    std::unique_ptr<image_transport::ImageTransport> pimageTransport_;
+    std::unique_ptr<camera_info_manager::CameraInfoManager> pcameraInfoManager_;
+    sensor_msgs::CameraInfo cameraInfo_;
 
 };
 
