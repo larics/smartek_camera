@@ -110,6 +110,7 @@ int Grabber::connect(int device_num) {
         connected_device->SetStringNodeValue("TriggerMode", "Off");
         // set continuous acquisition mode
         connected_device->SetStringNodeValue("AcquisitionMode", "Continuous");
+        connected_device->SetIntegerNodeValue("ImageBufferFrameCount", 1);
         // start acquisition
         connected_device->SetIntegerNodeValue("TLParamsLocked", 1);
         connected_device->CommandNodeExecute("AcquisitionStart");

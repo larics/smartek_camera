@@ -80,7 +80,7 @@ void SmartekCameraNode::run() {
             publishImage(data_, w_, h_, c_);
             //free(data_);
         }
-        //cv::waitKey(1);
+        cv::waitKey(1);
 
         rate.sleep();
     }
@@ -98,7 +98,7 @@ void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c) {
     cv_image.toImageMsg(ros_image);*/
 
     cv::Mat cvImage(h, w, CV_8UC4, (void*)data);
-    //cv::imshow("w", cvImage);
+    cv::imshow("w", cvImage);
 
     sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgra8", cvImage).toImageMsg();
 
@@ -153,6 +153,7 @@ SmartekCameraNode::SmartekCameraNode():
 }
 
 SmartekCameraNode::~SmartekCameraNode() {
+    grabber_->disconect(device_num_);
     delete grabber_;
 }
 
