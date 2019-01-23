@@ -55,7 +55,7 @@ private:
     ros::NodeHandle n_;
     ros::NodeHandle np_;
 
-    std::string frame_id_;
+    std::string frame_id_, camera_ip_;
 
     Grabber *grabber_;
     uint8_t *data_;

@@ -75,10 +75,12 @@ void SmartekCameraNode::run() {
         ros::spinOnce();
         data_ = grabber_->grab(device_num_, w_, h_, c_);
 
-        if (data_ != NULL) {
-            //cv::Mat cvImage(h_, w_, CV_8UC4, (void *) data_);
-            publishImage(data_, w_, h_, c_);
+        if (data_ != NULL && w_ != 0 && h_ != 0) {
+            cv::Mat cvImage(h_, w_, CV_8UC1, (void *) data_);
+            //publishImage(data_, w_, h_, c_);
             //free(data_);
+            cv::imshow("w", cvImage);
+            grabber_->popImage(device_num_);
         }
         cv::waitKey(1);
 
@@ -90,12 +92,6 @@ void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c) {
     double currentRosTime = ros::Time::now().toSec();
     double currentCamTime = grabber_->getCameraTimestamp(device_num_) / 1000000.0;
     uint32_t seq = grabber_->getImageID(device_num_);
-
-    /*cv_bridge::CvImage cv_image;
-    cv_image.image = cvImage(w, h, CV_8UC4, (void*)data);
-    cv_image.encoding = "rgb8";
-    sensor_msgs::Image ros_image;
-    cv_image.toImageMsg(ros_image);*/
 
     cv::Mat cvImage(h, w, CV_8UC4, (void*)data);
     cv::imshow("w", cvImage);
@@ -114,13 +110,6 @@ void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c) {
     cameraInfo_.height = h;
 
     cameraPublisher_.publish(*msg, cameraInfo_);
-
-    //printf("Timestamp: %f\n", currentCamTime);
-    //printf("Seq: %d\n", seq);
-    //cv::namedWindow( "Display window", cv::WINDOW_AUTOSIZE );
-    //cv::imshow( "Display window", cvImage );
-    //cv::waitKey(1);
-    //printf("Taj w: %d, h: %d, c: %d\n", w, h,c);
 }
 
 SmartekCameraNode::SmartekCameraNode():
@@ -133,13 +122,13 @@ SmartekCameraNode::SmartekCameraNode():
     n_ = ros::NodeHandle();
     np_ = ros::NodeHandle(std::string("~"));
 
+    camera_ip_ = np_.param<std::string>("camera_ip", "10000085");
     frame_id_ = np_.param<std::string>("frame_id", "camera");
 
     grabber_ = new Grabber();
 
     grabber_->findDevices();
-    device_num_ = grabber_->getDeviceBySerialNumber("10130000");
-    printf("device_num %d\n", device_num_);
+    device_num_ = grabber_->getDeviceBySerialNumber(camera_ip_.c_str());
 
     if (device_num_ != -1) grabber_->connect(device_num_);
 
@@ -149,7 +138,7 @@ SmartekCameraNode::SmartekCameraNode():
 
     pimageTransport_ = std::make_unique<image_transport::ImageTransport>(np_);
     cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
-    pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(np_, std::string("10130000"));
+    pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(np_, std::string(camera_ip_.c_str()));
 }
 
 SmartekCameraNode::~SmartekCameraNode() {

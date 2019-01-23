@@ -30,6 +30,7 @@ class Grabber {
         smcs::IParams color_pipeline_params_;
         smcs::IResults color_pipeline_results_;
         smcs::IImageBitmap color_pipeline_bitmap_;
+        smcs::IImageInfo image_info_;
 
     public:
         /**
@@ -78,6 +79,8 @@ class Grabber {
         uint64_t getCameraTimestamp(int device_num);
 
         uint32_t getImageID(int device_num);
+
+        void popImage(int device_num);
 
 
         /**

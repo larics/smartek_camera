@@ -28,8 +28,6 @@ Grabber::Grabber(void) {
     smcs_api_ = smcs::GetCameraAPI();
     image_proc_api_ = smcs::GetImageProcAPI();
 
-    smcs_api_->SetHeartbeatTime(3.0);
-
     if (!smcs_api_->IsUsingKernelDriver()) {
         printf("Warning: Smartek Filter Driver not loaded. \n");
     }
@@ -44,6 +42,8 @@ Grabber::Grabber(void) {
 }
 
 Grabber::~Grabber(void) {
+
+    smcs_ICameraAPI_UnregisterCallback(smcs_api_, smcs_ICallbackEvent_Handler);
     color_pipeline_alg_->DestroyParams(color_pipeline_params_);
     color_pipeline_alg_->DestroyResults(color_pipeline_results_);
     image_proc_api_->DestroyBitmap(color_pipeline_bitmap_);
@@ -87,6 +87,8 @@ int Grabber::connect(int device_num) {
 
     connected_device = devices_[device_num];
 
+    //connected_device->SetIntegerNodeValue("ImageBufferFrameCount", 1);
+
     if (connected_device != NULL && connected_device->Connect()) {
         is_connected = 1;
         printf("Connected to the camera: %s %d \n", IpAddrToString(connected_device->GetIpAddress()).c_str(),
@@ -110,10 +112,12 @@ int Grabber::connect(int device_num) {
         connected_device->SetStringNodeValue("TriggerMode", "Off");
         // set continuous acquisition mode
         connected_device->SetStringNodeValue("AcquisitionMode", "Continuous");
-        connected_device->SetIntegerNodeValue("ImageBufferFrameCount", 1);
         // start acquisition
         connected_device->SetIntegerNodeValue("TLParamsLocked", 1);
+        //connected_device->SetIntegerNodeValue("ImageBufferFrameCount", 1);
         connected_device->CommandNodeExecute("AcquisitionStart");
+        //common::StartAcquisition(connected_device);
+
 
     } else {
         is_connected = 0;
@@ -126,6 +130,7 @@ int Grabber::connect(int device_num) {
 void Grabber::disconect(int device_num) {
     if (devices_.size() <= device_num) return;
 
+    //common::StopAcquisition(devices_[device_num]);
     devices_[device_num]->CommandNodeExecute("AcquisitionStop");
     devices_[device_num]->SetIntegerNodeValue("TLParamsLocked", 0);
     devices_[device_num]->Disconnect();
@@ -133,47 +138,28 @@ void Grabber::disconect(int device_num) {
 
 uint64_t Grabber::getCameraTimestamp(int device_num) {
     smcs::IDevice connected_device;
-    smcs::IImageInfo image_info;
     uint64_t camera_timestamp = 0;
-
 
     if (devices_.size() <= device_num) return camera_timestamp;
 
-    connected_device = devices_[device_num];
-
-    if (connected_device.IsValid() && connected_device->IsConnected()) {
-        if (!connected_device->IsBufferEmpty()) {
-            connected_device->GetImageInfo(&image_info);
-            camera_timestamp = image_info->GetCameraTimestamp();
-        }
-    }
+    camera_timestamp = image_info_->GetCameraTimestamp();
 
     return camera_timestamp;
 }
 
 uint32_t Grabber::getImageID(int device_num) {
     smcs::IDevice connected_device;
-    smcs::IImageInfo image_info;
     uint32_t image_id = 0;
-
 
     if (devices_.size() <= device_num) return image_id;
 
-    connected_device = devices_[device_num];
-
-    if (connected_device.IsValid() && connected_device->IsConnected()) {
-        if (!connected_device->IsBufferEmpty()) {
-            connected_device->GetImageInfo(&image_info);
-            image_id = image_info->GetImageID();
-        }
-    }
+    image_id = image_info_->GetImageID();
 
     return image_id;
 }
 
 uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c) {
     smcs::IDevice connected_device;
-    smcs::IImageInfo image_info;
     UINT32 src_width, src_height;
     UINT32 src_pixel_type;
     uint8_t *im = NULL;
@@ -184,8 +170,8 @@ uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c) {
 
     if (connected_device.IsValid() && connected_device->IsConnected()) {
         if (!connected_device->IsBufferEmpty()) {
-            connected_device->GetImageInfo(&image_info);
-            if (image_info != NULL) {
+            connected_device->GetImageInfo(&image_info_);
+            if (image_info_ != NULL) {
                 // white balance parameters
                 //color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
 
@@ -290,27 +276,40 @@ uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c) {
                 //m_colorPipelineParams->SetFloatNodeValue("MaxGainOffset", 20);
                 //m_colorPipelineParams->SetBooleanNodeValue("EnableAutoExposure", true);
 
-                image_proc_api_->ExecuteAlgorithm(color_pipeline_alg_, image_info,
+                /*image_proc_api_->ExecuteAlgorithm(color_pipeline_alg_, image_info_,
                                                   color_pipeline_bitmap_, color_pipeline_params_,
-                                                  color_pipeline_results_);
+                                                  color_pipeline_results_);*/
 
                 //rezultati su spremljeni u color_pipeline_results_
                 // color_pipeline_results_->GetFloatNodeValue("RedGain", redGain);
 
-                im = smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetRawData();
+                /*im = smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetRawData();
                 smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetPixelType(src_pixel_type);
                 smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetSize(src_width, src_height);
                 w = src_width;
                 h = src_height;
-                c = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)src_pixel_type) / 8;
+                c = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)src_pixel_type) / 8;*/
                 //im = dataFromImageBitmap(color_pipeline_bitmap_, w, h, c);
+                smcs::IImageBitmapInterface(image_info_).GetSize(src_width, src_height);
+                w = src_width;
+                h = src_height;
+                im = smcs::IImageBitmapInterface(image_info_).GetRawData();
+                UINT32 pendingImages = connected_device->GetPendingImagesCount();
+                printf("images: %d %d\n",pendingImages, im[100]);
+
             }
-            connected_device->PopImage(image_info);
-            connected_device->ClearImageBuffer();
         }
     }
-
     return im;
+}
+
+void Grabber::popImage(int device_num) {
+    smcs::IDevice connected_device;
+
+    connected_device = devices_[device_num];
+
+    connected_device->PopImage(image_info_);
+    connected_device->ClearImageBuffer();
 }
 
 float *Grabber::dataFromImageBitmap(const smcs::IImageBitmapInterface src, int &w, int &h, int &c) {
