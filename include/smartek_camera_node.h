@@ -53,7 +53,6 @@ private:
     bool is_time_sync_enabled_;
 
     ros::NodeHandle n_;
-    ros::NodeHandle np_;
 
     std::string frame_id_, camera_ip_;
 

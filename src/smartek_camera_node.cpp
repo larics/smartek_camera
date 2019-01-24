@@ -148,13 +148,33 @@ SmartekCameraNode::SmartekCameraNode():
         h_(0),
         c_(0),
         device_num_(-1) {
-    n_ = ros::NodeHandle();
-    np_ = ros::NodeHandle(std::string("~"));
+    ros::NodeHandle np_("~");
 
-    camera_ip_ = np_.param<std::string>("camera_ip", "10000085");
-    frame_id_ = np_.param<std::string>("frame_id", "camera");
-    enableTimesync_ = np_.param<bool>("time_sync", true);
-    image_proc_type_ = np_.param<int>("image_proc_type", 1);
+    int ip;
+
+    if (np_.getParam("camera_ip", ip))
+    {
+        camera_ip_ = std::to_string(ip);
+    }
+    else camera_ip_ = std::string("10000083");
+
+    if (np_.getParam("frame_id", frame_id_))
+    {
+
+    }
+    else frame_id_ = std::string("camera");
+
+    if (np_.getParam("time_sync", enableTimesync_))
+    {
+
+    }
+    else enableTimesync_ = true;
+
+    if (np_.getParam("image_proc_type", image_proc_type_))
+    {
+
+    }
+    else image_proc_type_ = 1;
 
     grabber_ = new Grabber(image_proc_type_);
 
@@ -179,15 +199,14 @@ SmartekCameraNode::~SmartekCameraNode() {
 
 int main(int argc, char **argv) {
 
-    ros::init(argc, argv, "smartek_camera_driver");
-    ros::start();
+    ros::init(argc, argv, "smartek_driver_node");
+
+    SmartekCameraNode camera_node;
 
     // if the smartek camera node quits for some reason, e.g. camera disconnected,
     // try to construct it again until the application receives an interrupt
     while(ros::ok()) {
-        SmartekCameraNode().run();
+        camera_node.run();
     }
-
-    ros::shutdown();
     return 0;
 }

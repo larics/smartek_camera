@@ -78,7 +78,7 @@ int Grabber::getDeviceBySerialNumber(std::string serial_number) {
 
     for (i = 0; i < devices_.size(); i++) {
         serial = devices_[i]->GetSerialNumber();
-        printf("Serial: %s\n", serial);
+        printf("Serial: %s\n", serial.c_str());
         if (!serial.compare(serial_number)) device_num = i;
     }
 
