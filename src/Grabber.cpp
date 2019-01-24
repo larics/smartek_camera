@@ -20,13 +20,16 @@ void SMCS_CALL smcs_ICallbackEvent_Handler(smcs_ICameraAPI_HANDLE hApi, smcs_IDe
     }
 }
 
-Grabber::Grabber(void) {
+Grabber::Grabber(int image_proc_type) {
+
+    image_proc_type_ = image_proc_type;
 
     smcs::InitCameraAPI();
-    smcs::InitImageProcAPI();
+
+    if (image_proc_type_ > 0) smcs::InitImageProcAPI();
 
     smcs_api_ = smcs::GetCameraAPI();
-    image_proc_api_ = smcs::GetImageProcAPI();
+    if (image_proc_type_ > 0) image_proc_api_ = smcs::GetImageProcAPI();
 
     if (!smcs_api_->IsUsingKernelDriver()) {
         printf("Warning: Smartek Filter Driver not loaded. \n");
@@ -35,20 +38,25 @@ Grabber::Grabber(void) {
     smcs_api_->SetHeartbeatTime(3);
     smcs_ICameraAPI_RegisterCallback(smcs_api_, smcs_ICallbackEvent_Handler);
 
-    color_pipeline_alg_ = image_proc_api_->GetAlgorithmByName("ColorPipeline");
-    color_pipeline_alg_->CreateParams(&color_pipeline_params_);
-    color_pipeline_alg_->CreateResults(&color_pipeline_results_);
-    image_proc_api_->CreateBitmap(&color_pipeline_bitmap_);
+    if (image_proc_type_ > 0) {
+        color_pipeline_alg_ = image_proc_api_->GetAlgorithmByName("ColorPipeline");
+        color_pipeline_alg_->CreateParams(&color_pipeline_params_);
+        color_pipeline_alg_->CreateResults(&color_pipeline_results_);
+        image_proc_api_->CreateBitmap(&color_pipeline_bitmap_);
+    }
 }
 
 Grabber::~Grabber(void) {
 
     smcs_ICameraAPI_UnregisterCallback(smcs_api_, smcs_ICallbackEvent_Handler);
-    color_pipeline_alg_->DestroyParams(color_pipeline_params_);
-    color_pipeline_alg_->DestroyResults(color_pipeline_results_);
-    image_proc_api_->DestroyBitmap(color_pipeline_bitmap_);
 
-    smcs::ExitImageProcAPI();
+    if (image_proc_type_ > 0) {
+        color_pipeline_alg_->DestroyParams(color_pipeline_params_);
+        color_pipeline_alg_->DestroyResults(color_pipeline_results_);
+        image_proc_api_->DestroyBitmap(color_pipeline_bitmap_);
+
+        smcs::ExitImageProcAPI();
+    }
     smcs::ExitCameraAPI();
 }
 
@@ -158,7 +166,7 @@ uint32_t Grabber::getImageID(int device_num) {
     return image_id;
 }
 
-uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c) {
+uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c, uint32_t &pixel_type) {
     smcs::IDevice connected_device;
     UINT32 src_width, src_height;
     UINT32 src_pixel_type;
@@ -172,131 +180,137 @@ uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c) {
         if (!connected_device->IsBufferEmpty()) {
             connected_device->GetImageInfo(&image_info_);
             if (image_info_ != NULL) {
-                // white balance parameters
-                //color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
 
-                //color_pipeline_params_->SetIntegerNodeValue("PixelDecimation", 8);
+                if (image_proc_type_ == 0) {
+                    im = smcs::IImageBitmapInterface(image_info_).GetRawData();
+                    smcs::IImageBitmapInterface(image_info_).GetPixelType(src_pixel_type);
+                    smcs::IImageBitmapInterface(image_info_).GetSize(src_width, src_height);
+                    w = src_width;
+                    h = src_height;
+                    pixel_type = src_pixel_type;
+                    c = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)src_pixel_type) / 8;
+                }
+                else if (image_proc_type_ == 1){
+                    // white balance parameters
+                    //color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
 
-                // rgb gain parameters
-                //color_pipeline_params_->SetFloatNodeValue("RedGain", 1.0);
-                //color_pipeline_params_->SetFloatNodeValue("GreenGain", 1.0);
-                //color_pipeline_params_->SetFloatNodeValue("BlueGain", 1.0);
+                    //color_pipeline_params_->SetIntegerNodeValue("PixelDecimation", 8);
 
-                // rgb gamma parameters
-                //color_pipeline_params_->SetFloatNodeValue("RedGamma", 1.0);
-                //color_pipeline_params_->SetFloatNodeValue("GreenGamma", 1.0);
-                //color_pipeline_params_->SetFloatNodeValue("BlueGamma", 1.0);
+                    // rgb gain parameters
+                    //color_pipeline_params_->SetFloatNodeValue("RedGain", 1.0);
+                    //color_pipeline_params_->SetFloatNodeValue("GreenGain", 1.0);
+                    //color_pipeline_params_->SetFloatNodeValue("BlueGain", 1.0);
 
-                // demosaic parameters
-                // border type, default smcs_IPBT_BILINEAR_BORDER
-                //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_BILINEAR_BORDER);
-                //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_COLORIZED_BORDER);
-                //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_BLACK_BORDER);
-                //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_CROP_BORDER);
-                //color_pipeline_params_->SetBooleanNodeValue("EnableDemosaic", true);
-                // demosaic type, default Bilinear
-                //color_pipeline_params_->SetStringNodeValue("DemosaicType", "Bilinear");
-               // color_pipeline_params_->SetStringNodeValue("DemosaicType", "HQLinear");
-                //color_pipeline_params_->SetStringNodeValue("DemosaicType", "PixelGroup");
+                    // rgb gamma parameters
+                    //color_pipeline_params_->SetFloatNodeValue("RedGamma", 1.0);
+                    //color_pipeline_params_->SetFloatNodeValue("GreenGamma", 1.0);
+                    //color_pipeline_params_->SetFloatNodeValue("BlueGamma", 1.0);
 
-                // color correction parameters
-                // color correction is not enabled by default
-                //color_pipeline_params_->SetBooleanNodeValue("EnableColorCorrection", false);
-                // type of color correction, default Matrix3x3RGB
-                //color_pipeline_params_->SetStringNodeValue("ColorCorrectionType", "Matrix3x3RGB");
-                //color_pipeline_params_->SetStringNodeValue("ColorCorrectionType", "ColorGimp");
+                    // demosaic parameters
+                    // border type, default smcs_IPBT_BILINEAR_BORDER
+                    //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_BILINEAR_BORDER);
+                    //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_COLORIZED_BORDER);
+                    //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_BLACK_BORDER);
+                    //color_pipeline_params_->SetIntegerNodeValue("BorderTypeDemosaic", smcs_IPBT_CROP_BORDER);
+                    //color_pipeline_params_->SetBooleanNodeValue("EnableDemosaic", true);
+                    // demosaic type, default Bilinear
+                    //color_pipeline_params_->SetStringNodeValue("DemosaicType", "Bilinear");
+                    // color_pipeline_params_->SetStringNodeValue("DemosaicType", "HQLinear");
+                    //color_pipeline_params_->SetStringNodeValue("DemosaicType", "PixelGroup");
 
-                // parameters for Matrix3x3RGB
-                // example of Matrix3x3RGB
-                //double matrix3x3RGB[3][3];
-                //matrix3x3RGB[0][0] = 1.0;
-                //matrix3x3RGB[0][1] = 0.0;
-                //matrix3x3RGB[0][2] = 0.0;
-                //matrix3x3RGB[1][0] = 0.0;
-                //matrix3x3RGB[1][1] = 1.0;
-                //matrix3x3RGB[1][2] = 0.0;
-                //matrix3x3RGB[2][0] = 0.0;
-                //matrix3x3RGB[2][1] = 0.0;
-                //matrix3x3RGB[2][2] = 1.0;
-                //for (int i = 0; i < 3; i++)
-                //  for (int j = 0; j < 3; j++) {
-                //      //matrix3x3RGB[i][j] = (i == j) ? 1.0 : 0.0;    // set matrix to do nothing
-                //      std::stringstream matrix;
-                //      matrix << "Matrix" << i << j;
-                //      m_matrixParams->SetFloatNodeValue(matrix.str(), paramsImp->matrix3x3RGB[i][j]);
-                //  }
-                // parameters for color gimp
-                // example of color gimp
-                //std::string color[7] = {"All","Red","Yellow","Green","Cyan","Blue","Magenta"};
-                //for (int j = 0; j < 7; j++) {
-                //      std::stringstream hue;
-                //      hue << "Hue" << color[j];
-                //      m_colorPipelineParams->SetFloatNodeValue(hue.str(), 20);                // min -180 max 180     default 0
-                //      std::stringstream saturation;
-                //      saturation << "Saturation" << color[j];
-                //      m_colorPipelineParams->SetFloatNodeValue(saturation.str(), 40);         // min -100 max 100     default 0
-                //      std::stringstream lightness;
-                //      lightness << "Lightness" << color[j];
-                //      m_colorPipelineParams->SetFloatNodeValue(lightness.str(), 15);          // min -100 max 100     default 0
-                //}
-                //m_colorPipelineParams->SetFloatNodeValue("Overlay", 10);                      // min 0 max 100        default 0
+                    // color correction parameters
+                    // color correction is not enabled by default
+                    //color_pipeline_params_->SetBooleanNodeValue("EnableColorCorrection", false);
+                    // type of color correction, default Matrix3x3RGB
+                    //color_pipeline_params_->SetStringNodeValue("ColorCorrectionType", "Matrix3x3RGB");
+                    //color_pipeline_params_->SetStringNodeValue("ColorCorrectionType", "ColorGimp");
 
-                // sharpen parameters
-                // sharpen is not enabled by default
-                //m_colorPipelineParams->SetFloatNodeValue("SharpenFactor", 0.5);
-                // border type, default smcs_IPBT_COPY_BORDER
-                //m_colorPipelineParams->SetIntegerNodeValue("BorderTypeSharpen", smcs_IPBT_COPY_BORDER);
-                //m_colorPipelineParams->SetIntegerNodeValue("BorderTypeSharpen", smcs_IPBT_BLACK_BORDER);
-                //m_colorPipelineParams->SetIntegerNodeValue("BorderTypeSharpen", smcs_IPBT_CROP_BORDER);
-                //m_colorPipelineParams->SetBooleanNodeValue("EnableSharpen", true);
+                    // parameters for Matrix3x3RGB
+                    // example of Matrix3x3RGB
+                    //double matrix3x3RGB[3][3];
+                    //matrix3x3RGB[0][0] = 1.0;
+                    //matrix3x3RGB[0][1] = 0.0;
+                    //matrix3x3RGB[0][2] = 0.0;
+                    //matrix3x3RGB[1][0] = 0.0;
+                    //matrix3x3RGB[1][1] = 1.0;
+                    //matrix3x3RGB[1][2] = 0.0;
+                    //matrix3x3RGB[2][0] = 0.0;
+                    //matrix3x3RGB[2][1] = 0.0;
+                    //matrix3x3RGB[2][2] = 1.0;
+                    //for (int i = 0; i < 3; i++)
+                    //  for (int j = 0; j < 3; j++) {
+                    //      //matrix3x3RGB[i][j] = (i == j) ? 1.0 : 0.0;    // set matrix to do nothing
+                    //      std::stringstream matrix;
+                    //      matrix << "Matrix" << i << j;
+                    //      m_matrixParams->SetFloatNodeValue(matrix.str(), paramsImp->matrix3x3RGB[i][j]);
+                    //  }
+                    // parameters for color gimp
+                    // example of color gimp
+                    //std::string color[7] = {"All","Red","Yellow","Green","Cyan","Blue","Magenta"};
+                    //for (int j = 0; j < 7; j++) {
+                    //      std::stringstream hue;
+                    //      hue << "Hue" << color[j];
+                    //      m_colorPipelineParams->SetFloatNodeValue(hue.str(), 20);                // min -180 max 180     default 0
+                    //      std::stringstream saturation;
+                    //      saturation << "Saturation" << color[j];
+                    //      m_colorPipelineParams->SetFloatNodeValue(saturation.str(), 40);         // min -100 max 100     default 0
+                    //      std::stringstream lightness;
+                    //      lightness << "Lightness" << color[j];
+                    //      m_colorPipelineParams->SetFloatNodeValue(lightness.str(), 15);          // min -100 max 100     default 0
+                    //}
+                    //m_colorPipelineParams->SetFloatNodeValue("Overlay", 10);                      // min 0 max 100        default 0
 
-                // paremeters for autoexposure
-                // autoexposure is not enabled by default
-                //double oldExposureTime, oldGain;
-                //m_device->GetFloatNodeValue("ExposureTime", oldExposureTime);
-                //m_colorPipelineParams->SetFloatNodeValue("OldExposure", oldExposureTime);
-                //if (m_defaultGainNotSet) {
-                //  m_device->GetFloatNodeValue("Gain", m_defaultGain);
-                //  m_colorPipelineParams->SetFloatNodeValue("DefaultGain", m_defaultGain);
-                //  m_colorPipelineParams->SetFloatNodeValue("OldGain", m_defaultGain);
-                //  oldGain = m_defaultGain;
-                //  m_defaultGainNotSet = false;
-                //} else {
-                //  m_device->GetFloatNodeValue("Gain", oldGain);
-                //  m_colorPipelineParams->SetFloatNodeValue("OldGain", oldGain);
-                //}
-                //UINT32 pixelType;
-                //imageInfo->GetPixelType(pixelType);
-                //UINT32 bitsPerPixel = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)pixelType);
-                //UINT32 targetPixelAverage = pow(2.0, (double)bitsPerPixel)/2;
-                //m_colorPipelineParams->SetFloatNodeValue("TargetPixelAverage", targetPixelAverage);
-                //m_colorPipelineParams->SetFloatNodeValue("MinExposure", 200);
-                //m_colorPipelineParams->SetFloatNodeValue("MaxExposure", 200000);
-                //m_colorPipelineParams->SetFloatNodeValue("ExposureTreshold", 12);
-                //m_colorPipelineParams->SetFloatNodeValue("MaxGainOffset", 20);
-                //m_colorPipelineParams->SetBooleanNodeValue("EnableAutoExposure", true);
+                    // sharpen parameters
+                    // sharpen is not enabled by default
+                    //m_colorPipelineParams->SetFloatNodeValue("SharpenFactor", 0.5);
+                    // border type, default smcs_IPBT_COPY_BORDER
+                    //m_colorPipelineParams->SetIntegerNodeValue("BorderTypeSharpen", smcs_IPBT_COPY_BORDER);
+                    //m_colorPipelineParams->SetIntegerNodeValue("BorderTypeSharpen", smcs_IPBT_BLACK_BORDER);
+                    //m_colorPipelineParams->SetIntegerNodeValue("BorderTypeSharpen", smcs_IPBT_CROP_BORDER);
+                    //m_colorPipelineParams->SetBooleanNodeValue("EnableSharpen", true);
 
-                /*image_proc_api_->ExecuteAlgorithm(color_pipeline_alg_, image_info_,
-                                                  color_pipeline_bitmap_, color_pipeline_params_,
-                                                  color_pipeline_results_);*/
+                    // paremeters for autoexposure
+                    // autoexposure is not enabled by default
+                    //double oldExposureTime, oldGain;
+                    //m_device->GetFloatNodeValue("ExposureTime", oldExposureTime);
+                    //m_colorPipelineParams->SetFloatNodeValue("OldExposure", oldExposureTime);
+                    //if (m_defaultGainNotSet) {
+                    //  m_device->GetFloatNodeValue("Gain", m_defaultGain);
+                    //  m_colorPipelineParams->SetFloatNodeValue("DefaultGain", m_defaultGain);
+                    //  m_colorPipelineParams->SetFloatNodeValue("OldGain", m_defaultGain);
+                    //  oldGain = m_defaultGain;
+                    //  m_defaultGainNotSet = false;
+                    //} else {
+                    //  m_device->GetFloatNodeValue("Gain", oldGain);
+                    //  m_colorPipelineParams->SetFloatNodeValue("OldGain", oldGain);
+                    //}
+                    //UINT32 pixelType;
+                    //imageInfo->GetPixelType(pixelType);
+                    //UINT32 bitsPerPixel = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)pixelType);
+                    //UINT32 targetPixelAverage = pow(2.0, (double)bitsPerPixel)/2;
+                    //m_colorPipelineParams->SetFloatNodeValue("TargetPixelAverage", targetPixelAverage);
+                    //m_colorPipelineParams->SetFloatNodeValue("MinExposure", 200);
+                    //m_colorPipelineParams->SetFloatNodeValue("MaxExposure", 200000);
+                    //m_colorPipelineParams->SetFloatNodeValue("ExposureTreshold", 12);
+                    //m_colorPipelineParams->SetFloatNodeValue("MaxGainOffset", 20);
+                    //m_colorPipelineParams->SetBooleanNodeValue("EnableAutoExposure", true);
 
-                //rezultati su spremljeni u color_pipeline_results_
-                // color_pipeline_results_->GetFloatNodeValue("RedGain", redGain);
+                    image_proc_api_->ExecuteAlgorithm(color_pipeline_alg_, image_info_,
+                                                      color_pipeline_bitmap_, color_pipeline_params_,
+                                                      color_pipeline_results_);
 
-                /*im = smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetRawData();
-                smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetPixelType(src_pixel_type);
-                smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetSize(src_width, src_height);
-                w = src_width;
-                h = src_height;
-                c = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)src_pixel_type) / 8;*/
-                //im = dataFromImageBitmap(color_pipeline_bitmap_, w, h, c);
-                smcs::IImageBitmapInterface(image_info_).GetSize(src_width, src_height);
-                w = src_width;
-                h = src_height;
-                im = smcs::IImageBitmapInterface(image_info_).GetRawData();
-                UINT32 pendingImages = connected_device->GetPendingImagesCount();
-                printf("images: %d %d\n",pendingImages, im[100]);
+                    //rezultati su spremljeni u color_pipeline_results_
+                    // color_pipeline_results_->GetFloatNodeValue("RedGain", redGain);
 
+                    im = smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetRawData();
+                    smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetPixelType(src_pixel_type);
+                    smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetSize(src_width, src_height);
+                    w = src_width;
+                    h = src_height;
+                    pixel_type = src_pixel_type;
+                    c = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)src_pixel_type) / 8;
+                    //im = dataFromImageBitmap(color_pipeline_bitmap_, w, h, c);
+                }
             }
         }
     }

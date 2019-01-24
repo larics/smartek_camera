@@ -48,8 +48,8 @@ public:
 
 private:
     void initTimestampSynchronizer();
-    void publishImage(uint8_t *data, int w, int h, int c);
-
+    void publishImage(uint8_t *data, int w, int h, int c, uint32_t pixel_type_);
+    std::string getCvBridgeType(uint32_t pixel_type);
     bool is_time_sync_enabled_;
 
     ros::NodeHandle n_;
@@ -59,7 +59,9 @@ private:
 
     Grabber *grabber_;
     uint8_t *data_;
-    int w_, h_, c_, device_num_;
+    int w_, h_, c_, device_num_, image_proc_type_;
+    uint32_t pixel_type_;
+    bool enableTimesync_;
 
     TimestampSynchronizer::Options defaultTimesyncOptions_;
     std::unique_ptr<TimestampSynchronizer> ptimestampSynchronizer_;

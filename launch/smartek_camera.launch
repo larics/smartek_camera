@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="name" default="cam1" />
+    <arg name="camera_ip" default="10000085" />
+    <arg name="frame_id" default="camera" />
+    <arg name="time_sync" default="true" />
+    <arg name="image_proc_type" default="1" />
+
+    <node name="smartek_camera_node" pkg="smartek_camera" type="smartek_camera_node" output="screen" ns="$(arg name)">
+        <param name="camera_ip" value="$(arg camera_ip)" />
+        <param name="frame_id" value="$(arg frame_id)" />
+        <param name="time_sync" value="$(arg time_sync)" />
+        <param name="image_proc_type" value="$(arg image_proc_type)" />
+    </node>
+</launch>

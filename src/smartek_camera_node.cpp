@@ -24,83 +24,75 @@ void SmartekCameraNode::initTimestampSynchronizer() {
     ptimestampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTimesyncOptions_);
 }
 
-/*! Publish an image obtained from the CameraSuite API
- *
- * \param img the image to be published
- * \param imgInfo the object from which the frame number and sensor timestamp are read
- *
- */
-/*void SmartekCameraNode::publishGigeImage(const gige::IImageBitmapInterface &img, const gige::IImageInfo &imgInfo) {
-
-    double currentRosTime = ros::Time::now().toSec();
-
-    double currentCamTime = static_cast<double>(imgInfo->GetCameraTimestamp()) / 1000000.0;
-    UINT32 seq = imgInfo->GetImageID();
-
-    UINT32 srcPixelType;
-    UINT32 srcWidth, srcHeight;
-
-    img.GetPixelType(srcPixelType);
-    img.GetSize(srcWidth, srcHeight);
-
-    UINT32 lineSize = img.GetLineSize();
-
-    // construct an openCV image which shares memory with the GigE image
-    cv::Mat cvImage(srcHeight, srcWidth, config_.SmartekPipeline ? CV_8UC4 : CV_8UC1, (void *) img.GetRawData(), lineSize);
-    // ...then, build an image sensor message from the openCV image
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), config_.SmartekPipeline ? "bgra8" : "bayer_rggb8", cvImage).toImageMsg();
-
-    msg->header.frame_id=frame_id_;
-    msg->header.seq = seq;
-    msg->header.stamp = ros::Time(config_.EnableTimesync ? ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq)
-                                                         : currentRosTime);
-
-    cameraInfo_ = pcameraInfoManager_->getCameraInfo();
-    cameraInfo_.header.stamp = msg->header.stamp;
-    cameraInfo_.header.seq = msg->header.seq;
-    cameraInfo_.header.frame_id = msg->header.frame_id;
-    cameraInfo_.width = srcWidth;
-    cameraInfo_.height = srcHeight;
-
-    cameraPublisher_.publish(*msg, cameraInfo_);
-}*/
-
 void SmartekCameraNode::run() {
     ros::Rate rate(100);
 
-    cv::Mat im(2048, 2592, 16);
-    cv::namedWindow("w", 1);
+    volatile bool first_grab = false;
+
+    while (ros::ok() && device_num_ != -1 && !first_grab) {
+        data_ = grabber_->grab(device_num_, w_, h_, c_, pixel_type_);
+        if (data_ != NULL && w_ != 0 && h_ != 0) {
+            first_grab = true;
+        }
+        grabber_->popImage(device_num_);
+        rate.sleep();
+    }
+
+    if (c_ == 1) {
+        cv::Mat im(h_, w_, CV_8UC1);
+    }
+    else if (c_ == 2) {
+        cv::Mat im(h_, w_, CV_8UC2);
+    }
+    else if (c_ == 3) {
+        cv::Mat im(h_, w_, CV_8UC3);
+    }
+    else {
+        cv::Mat im(h_, w_, CV_8UC4);
+    }
 
     while (ros::ok() && device_num_ != -1) {
         ros::spinOnce();
-        data_ = grabber_->grab(device_num_, w_, h_, c_);
+        data_ = grabber_->grab(device_num_, w_, h_, c_, pixel_type_);
 
         if (data_ != NULL && w_ != 0 && h_ != 0) {
-            cv::Mat cvImage(h_, w_, CV_8UC1, (void *) data_);
-            //publishImage(data_, w_, h_, c_);
-            //free(data_);
-            cv::imshow("w", cvImage);
+            publishImage(data_, w_, h_, c_, pixel_type_);
             grabber_->popImage(device_num_);
         }
-        cv::waitKey(1);
-
         rate.sleep();
     }
 }
 
-void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c) {
+void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c, uint32_t pixel_type_) {
     double currentRosTime = ros::Time::now().toSec();
     double currentCamTime = grabber_->getCameraTimestamp(device_num_) / 1000000.0;
+    std::string cv_bridge_type;
     uint32_t seq = grabber_->getImageID(device_num_);
+    static int cv_type;
 
-    cv::Mat cvImage(h, w, CV_8UC4, (void*)data);
-    cv::imshow("w", cvImage);
+    if (c == 1) {
+        cv_type = CV_8UC1;
+    }
+    else if (c == 2) {
+        cv_type = CV_8UC2;
+    }
+    else if (c == 3) {
+        cv_type = CV_8UC3;
+    }
+    else {
+        cv_type = CV_8UC4;
+    }
 
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgra8", cvImage).toImageMsg();
+    cv::Mat cvImage(h, w, cv_type, (void*)data);
+
+    cv_bridge_type = getCvBridgeType(pixel_type_);
+
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), cv_bridge_type, cvImage).toImageMsg();
 
     msg->header.frame_id = frame_id_;
     msg->header.seq = seq;
-    msg->header.stamp = ros::Time(currentRosTime);//ros::Time(ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq));
+    msg->header.stamp = ros::Time(enableTimesync_ ? ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq)
+                                                         : currentRosTime);
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -110,6 +102,43 @@ void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c) {
     cameraInfo_.height = h;
 
     cameraPublisher_.publish(*msg, cameraInfo_);
+}
+
+std::string SmartekCameraNode::getCvBridgeType(uint32_t pixel_type) {
+    std::string cv_bridge_type;
+
+    if (pixel_type == GVSP_PIX_MONO8 || pixel_type == GVSP_PIX_MONO8_SIGNED) {
+        cv_bridge_type = std::string("mono8");
+    }
+    else if (pixel_type == GVSP_PIX_MONO16) {
+        cv_bridge_type = std::string("mono16");
+    }
+    else if (pixel_type == GVSP_PIX_RGB8_PACKED) {
+        cv_bridge_type = std::string("rgb8");
+    }
+    else if (pixel_type == GVSP_PIX_BGR8_PACKED) {
+        cv_bridge_type = std::string("bgr8");
+    }
+    else if (pixel_type == GVSP_PIX_RGBA8_PACKED) {
+        cv_bridge_type = std::string("rgba8");
+    }
+    else if (pixel_type == GVSP_PIX_BGRA8_PACKED) {
+        cv_bridge_type = std::string("bgra8");
+    }
+    else if (pixel_type == GVSP_PIX_BAYGR8) {
+        cv_bridge_type = std::string("bayer_bggr8");
+    }
+    else if (pixel_type == GVSP_PIX_BAYRG8) {
+        cv_bridge_type = std::string("bayer_gbrg8");
+    }
+    else if (pixel_type == GVSP_PIX_BAYGB8) {
+        cv_bridge_type = std::string("bayer_rggb8");
+    }
+    else if (pixel_type == GVSP_PIX_BAYBG8) {
+        cv_bridge_type = std::string("bayer_grbg8");
+    }
+
+    return cv_bridge_type;
 }
 
 SmartekCameraNode::SmartekCameraNode():
@@ -124,8 +153,10 @@ SmartekCameraNode::SmartekCameraNode():
 
     camera_ip_ = np_.param<std::string>("camera_ip", "10000085");
     frame_id_ = np_.param<std::string>("frame_id", "camera");
+    enableTimesync_ = np_.param<bool>("time_sync", true);
+    image_proc_type_ = np_.param<int>("image_proc_type", 1);
 
-    grabber_ = new Grabber();
+    grabber_ = new Grabber(image_proc_type_);
 
     grabber_->findDevices();
     device_num_ = grabber_->getDeviceBySerialNumber(camera_ip_.c_str());

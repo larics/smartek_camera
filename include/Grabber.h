@@ -32,13 +32,15 @@ class Grabber {
         smcs::IImageBitmap color_pipeline_bitmap_;
         smcs::IImageInfo image_info_;
 
+        int image_proc_type_;
+
     public:
         /**
          * @brief A constructor.
          * It initialize CameraSuite and all the necessary variables.
          *
          */
-        Grabber(void);
+        Grabber(int image_proc_type);
 
         /**
          * @brief A destructor.
@@ -92,7 +94,7 @@ class Grabber {
          * @param c address to variable where number of channels of the image should be stored.
          * @return pointer to data array.
          */
-        uint8_t *grab(int device_num, int &w, int &h, int &c);
+        uint8_t *grab(int device_num, int &w, int &h, int &c, uint32_t &pixel_type);
 };
 
 
