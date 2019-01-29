@@ -58,8 +58,9 @@ private:
 
     Grabber *grabber_;
     uint8_t *data_;
-    int w_, h_, c_, device_num_, image_proc_type_;
+    int w_, h_, c_, device_num_, image_proc_type_, rate_;
     uint32_t pixel_type_;
+    float exposure_time_;
     bool enableTimesync_;
 
     TimestampSynchronizer::Options defaultTimesyncOptions_;

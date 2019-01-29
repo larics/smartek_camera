@@ -4,11 +4,15 @@
 	<arg name="frame_id" default="camera" />
 	<arg name="time_sync" default="false" />
 	<arg name="image_proc_type" default="1" />
+	<arg name="rate" default="50" />
+	<arg name="exposure_time" default="20000.00" />
 	
 	<node name="smartek_camera_node" pkg="smartek_camera" type="smartek_camera_node" output="screen" ns="$(arg name)">
 		<param name="camera_ip" value="$(arg camera_ip)" />
 		<param name="frame_id" value="$(arg frame_id)" />
 		<param name="time_sync" value="$(arg time_sync)" />
 		<param name="image_proc_type" value="$(arg image_proc_type)" />
+		<param name="rate" value="$(arg rate)" />
+		<param name="exposure_time" value="$(arg exposure_time)" />
 	</node>
 </launch>

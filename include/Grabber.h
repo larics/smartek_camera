@@ -33,6 +33,7 @@ class Grabber {
         smcs::IImageInfo image_info_;
 
         int image_proc_type_;
+        double exposure_time_;
 
     public:
         /**
@@ -41,6 +42,8 @@ class Grabber {
          *
          */
         Grabber(int image_proc_type);
+
+        void setExposureTime(double exposure_time, int device_num);
 
         /**
          * @brief A destructor.

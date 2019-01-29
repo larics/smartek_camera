@@ -21,6 +21,9 @@ void SMCS_CALL smcs_ICallbackEvent_Handler(smcs_ICameraAPI_HANDLE hApi, smcs_IDe
 }
 
 Grabber::Grabber(int image_proc_type) {
+    smcs::INode bufferNode;
+
+    exposure_time_ = 20000.0;
 
     image_proc_type_ = image_proc_type;
 
@@ -38,12 +41,35 @@ Grabber::Grabber(int image_proc_type) {
     smcs_api_->SetHeartbeatTime(3);
     smcs_ICameraAPI_RegisterCallback(smcs_api_, smcs_ICallbackEvent_Handler);
 
+    bufferNode = smcs_api_->GetApiParametersNode("ImageBufferFrameCount");
+    bufferNode->SetIntegerNodeValue(1);
+
     if (image_proc_type_ > 0) {
         color_pipeline_alg_ = image_proc_api_->GetAlgorithmByName("ColorPipeline");
         color_pipeline_alg_->CreateParams(&color_pipeline_params_);
         color_pipeline_alg_->CreateResults(&color_pipeline_results_);
         image_proc_api_->CreateBitmap(&color_pipeline_bitmap_);
     }
+}
+
+void Grabber::setExposureTime(double exposure_time, int device_num) {
+    smcs::IDevice connected_device;
+    double max_exposure_time, min_exposure_time;
+
+    if (devices_.size() <= device_num) return;
+
+    connected_device = devices_[device_num];
+
+    connected_device->GetFloatNodeMax("ExposureTime", max_exposure_time);
+    connected_device->GetFloatNodeMin("ExposureTime", min_exposure_time);
+
+    if (exposure_time > min_exposure_time && exposure_time < max_exposure_time) {
+        exposure_time_ = exposure_time;
+
+        connected_device->SetFloatNodeValue("ExposureTime", exposure_time_);
+    }
+
+    return;
 }
 
 Grabber::~Grabber(void) {
@@ -78,7 +104,6 @@ int Grabber::getDeviceBySerialNumber(std::string serial_number) {
 
     for (i = 0; i < devices_.size(); i++) {
         serial = devices_[i]->GetSerialNumber();
-        printf("Serial: %s\n", serial.c_str());
         if (!serial.compare(serial_number)) device_num = i;
     }
 
@@ -94,8 +119,6 @@ int Grabber::connect(int device_num) {
     if (devices_.size() <= device_num) return is_connected;
 
     connected_device = devices_[device_num];
-
-    //connected_device->SetIntegerNodeValue("ImageBufferFrameCount", 1);
 
     if (connected_device != NULL && connected_device->Connect()) {
         is_connected = 1;
@@ -124,8 +147,6 @@ int Grabber::connect(int device_num) {
         connected_device->SetIntegerNodeValue("TLParamsLocked", 1);
         //connected_device->SetIntegerNodeValue("ImageBufferFrameCount", 1);
         connected_device->CommandNodeExecute("AcquisitionStart");
-        //common::StartAcquisition(connected_device);
-
 
     } else {
         is_connected = 0;

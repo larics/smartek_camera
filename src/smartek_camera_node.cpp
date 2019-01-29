@@ -25,7 +25,7 @@ void SmartekCameraNode::initTimestampSynchronizer() {
 }
 
 void SmartekCameraNode::run() {
-    ros::Rate rate(100);
+    ros::Rate rate(rate_);
 
     volatile bool first_grab = false;
 
@@ -176,12 +176,27 @@ SmartekCameraNode::SmartekCameraNode():
     }
     else image_proc_type_ = 1;
 
+    if (np_.getParam("rate", rate_))
+    {
+
+    }
+    else rate_ = 50;
+
+    if (np_.getParam("exposure_time", exposure_time_))
+    {
+
+    }
+    else exposure_time_ = 20000.00;
+
     grabber_ = new Grabber(image_proc_type_);
 
     grabber_->findDevices();
     device_num_ = grabber_->getDeviceBySerialNumber(camera_ip_.c_str());
 
-    if (device_num_ != -1) grabber_->connect(device_num_);
+    if (device_num_ != -1) {
+        grabber_->connect(device_num_);
+        grabber_->setExposureTime(exposure_time_, device_num_);
+    }
 
     if(is_time_sync_enabled_) {
         initTimestampSynchronizer();
