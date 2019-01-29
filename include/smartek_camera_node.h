@@ -59,6 +59,7 @@ private:
     Grabber *grabber_;
     uint8_t *data_;
     int w_, h_, c_, device_num_, image_proc_type_, rate_;
+    int resized_image_height_, resized_image_width_;
     uint32_t pixel_type_;
     float exposure_time_;
     bool enableTimesync_;
@@ -66,8 +67,8 @@ private:
     TimestampSynchronizer::Options defaultTimesyncOptions_;
     std::unique_ptr<TimestampSynchronizer> ptimestampSynchronizer_;
 
-    image_transport::CameraPublisher cameraPublisher_;
-    std::unique_ptr<image_transport::ImageTransport> pimageTransport_;
+    image_transport::CameraPublisher cameraPublisher_, cameraPublisher_resized_;
+    std::unique_ptr<image_transport::ImageTransport> pimageTransport_, pimageTransport_resized_;
     std::unique_ptr<camera_info_manager::CameraInfoManager> pcameraInfoManager_;
     sensor_msgs::CameraInfo cameraInfo_;
 

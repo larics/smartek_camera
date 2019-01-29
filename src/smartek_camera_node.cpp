@@ -83,16 +83,23 @@ void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c, uint32_
         cv_type = CV_8UC4;
     }
 
-    cv::Mat cvImage(h, w, cv_type, (void*)data);
+    cv::Mat cvImage(h, w, cv_type, (void*)data), cvImage_resized;
+    cv::resize(cvImage, cvImage_resized, cv::Size(resized_image_width_,resized_image_height_));
 
     cv_bridge_type = getCvBridgeType(pixel_type_);
 
     sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), cv_bridge_type, cvImage).toImageMsg();
+    sensor_msgs::ImagePtr msg_resized = cv_bridge::CvImage(std_msgs::Header(), cv_bridge_type, cvImage_resized).toImageMsg();
 
     msg->header.frame_id = frame_id_;
     msg->header.seq = seq;
     msg->header.stamp = ros::Time(enableTimesync_ ? ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq)
                                                          : currentRosTime);
+
+    msg_resized->header.frame_id = frame_id_;
+    msg_resized->header.seq = seq;
+    msg_resized->header.stamp = ros::Time(enableTimesync_ ? ptimestampSynchronizer_->sync(currentCamTime, currentRosTime, seq)
+                                                  : currentRosTime);
 
     cameraInfo_ = pcameraInfoManager_->getCameraInfo();
     cameraInfo_.header.stamp = msg->header.stamp;
@@ -100,8 +107,15 @@ void SmartekCameraNode::publishImage(uint8_t *data, int w, int h, int c, uint32_
     cameraInfo_.header.frame_id = msg->header.frame_id;
     cameraInfo_.width = w;
     cameraInfo_.height = h;
-
     cameraPublisher_.publish(*msg, cameraInfo_);
+
+    cameraInfo_.header.stamp = msg_resized->header.stamp;
+    cameraInfo_.header.seq = msg_resized->header.seq;
+    cameraInfo_.header.frame_id = msg_resized->header.frame_id;
+    cameraInfo_.width = resized_image_width_;
+    cameraInfo_.height = resized_image_height_;
+    cameraPublisher_resized_.publish(*msg_resized, cameraInfo_);
+
 }
 
 std::string SmartekCameraNode::getCvBridgeType(uint32_t pixel_type) {
@@ -188,6 +202,18 @@ SmartekCameraNode::SmartekCameraNode():
     }
     else exposure_time_ = 20000.00;
 
+    if (np_.getParam("resized_image_height", resized_image_height_))
+    {
+
+    }
+    else resized_image_height_ = 1920;
+
+    if (np_.getParam("resized_image_width", resized_image_width_))
+    {
+
+    }
+    else resized_image_width_ = 1080;
+
     grabber_ = new Grabber(image_proc_type_);
 
     grabber_->findDevices();
@@ -205,6 +231,9 @@ SmartekCameraNode::SmartekCameraNode():
     pimageTransport_ = std::make_unique<image_transport::ImageTransport>(np_);
     cameraPublisher_ = pimageTransport_->advertiseCamera("image_raw", 10);
     pcameraInfoManager_ = std::make_unique<camera_info_manager::CameraInfoManager>(np_, std::string(camera_ip_.c_str()));
+
+    pimageTransport_resized_ = std::make_unique<image_transport::ImageTransport>(np_);
+    cameraPublisher_resized_ = pimageTransport_resized_->advertiseCamera("resized/image_raw", 10);
 }
 
 SmartekCameraNode::~SmartekCameraNode() {
