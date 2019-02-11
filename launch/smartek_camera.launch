@@ -1,8 +1,9 @@
 <launch>
 	<arg name="name" default="cam1" />
-	<arg name="camera_ip" default="10000085"/>
+	<arg name="camera_ip" default="10000083"/>
 	<arg name="frame_id" default="camera" />
-	<arg name="time_sync" default="false" />
+	<arg name="time_sync" default="true" />
+	<arg name="auto_exposure" default="false" />
 	<arg name="image_proc_type" default="1" />
 	<arg name="rate" default="50" />
 	<arg name="exposure_time" default="20000.00" />
@@ -15,6 +16,7 @@
 		<param name="time_sync" value="$(arg time_sync)" />
 		<param name="image_proc_type" value="$(arg image_proc_type)" />
 		<param name="rate" value="$(arg rate)" />
+		<param name="auto_exposure" value="$(arg auto_exposure)" />
 		<param name="exposure_time" value="$(arg exposure_time)" />
 		<param name="resized_image_width" value="$(arg resized_image_width)" />
 		<param name="resized_image_height" value="$(arg resized_image_height)" />

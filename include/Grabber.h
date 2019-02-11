@@ -34,6 +34,7 @@ class Grabber {
 
         int image_proc_type_;
         double exposure_time_;
+        bool auto_exposure_, default_gain_not_set_;
 
     public:
         /**
@@ -42,6 +43,8 @@ class Grabber {
          *
          */
         Grabber(int image_proc_type);
+
+        void setAutoExposure(bool auto_exposure);
 
         void setExposureTime(double exposure_time, int device_num);
 

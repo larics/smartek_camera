@@ -24,6 +24,16 @@ void SmartekCameraNode::initTimestampSynchronizer() {
     ptimestampSynchronizer_ = std::make_unique<TimestampSynchronizer>(defaultTimesyncOptions_);
 }
 
+void SmartekCameraNode::reconfigure_callback(Config &config, uint32_t level) {
+    if(device_num_ != -1) {
+        ROS_INFO("Reconfiguring camera");
+
+        ROS_INFO("New exposure: %.2lf", config.ExposureTime);
+        grabber_->setExposureTime(config.ExposureTime, device_num_);
+    }
+}
+
+
 void SmartekCameraNode::run() {
     ros::Rate rate(rate_);
 
@@ -184,6 +194,12 @@ SmartekCameraNode::SmartekCameraNode():
     }
     else enableTimesync_ = true;
 
+    if (np_.getParam("auto_exposure", auto_exposure_))
+    {
+
+    }
+    else auto_exposure_ = false;
+
     if (np_.getParam("image_proc_type", image_proc_type_))
     {
 
@@ -216,6 +232,8 @@ SmartekCameraNode::SmartekCameraNode():
 
     grabber_ = new Grabber(image_proc_type_);
 
+    grabber_->setAutoExposure(auto_exposure_);
+
     grabber_->findDevices();
     device_num_ = grabber_->getDeviceBySerialNumber(camera_ip_.c_str());
 
@@ -234,6 +252,9 @@ SmartekCameraNode::SmartekCameraNode():
 
     pimageTransport_resized_ = std::make_unique<image_transport::ImageTransport>(np_);
     cameraPublisher_resized_ = pimageTransport_resized_->advertiseCamera("resized/image_raw", 10);
+
+    reconfigureCallback_ = boost::bind(&SmartekCameraNode::reconfigure_callback, this, _1, _2);
+    reconfigureServer_.setCallback(reconfigureCallback_);
 }
 
 SmartekCameraNode::~SmartekCameraNode() {

@@ -3,6 +3,7 @@
 //
 
 #include "Grabber.h"
+#include <math.h>
 #include <sstream>
 
 void SMCS_CALL smcs_ICallbackEvent_Handler(smcs_ICameraAPI_HANDLE hApi, smcs_IDevice_HANDLE hDevice,
@@ -23,6 +24,8 @@ void SMCS_CALL smcs_ICallbackEvent_Handler(smcs_ICameraAPI_HANDLE hApi, smcs_IDe
 Grabber::Grabber(int image_proc_type) {
     smcs::INode bufferNode;
 
+    auto_exposure_ = false;
+    default_gain_not_set_ = true;
     exposure_time_ = 20000.0;
 
     image_proc_type_ = image_proc_type;
@@ -50,6 +53,12 @@ Grabber::Grabber(int image_proc_type) {
         color_pipeline_alg_->CreateResults(&color_pipeline_results_);
         image_proc_api_->CreateBitmap(&color_pipeline_bitmap_);
     }
+}
+
+void Grabber::setAutoExposure(bool auto_exposure) {
+    auto_exposure_ = auto_exposure;
+
+    return;
 }
 
 void Grabber::setExposureTime(double exposure_time, int device_num) {
@@ -189,8 +198,11 @@ uint32_t Grabber::getImageID(int device_num) {
 
 uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c, uint32_t &pixel_type) {
     smcs::IDevice connected_device;
+    double default_gain, old_exposure, old_gain, new_exposure_time, new_gain;
     UINT32 src_width, src_height;
     UINT32 src_pixel_type;
+    UINT32 bitsPerPixel;
+    UINT32 targetPixelAverage;
     uint8_t *im = NULL;
 
     if (devices_.size() <= device_num) return im;
@@ -213,7 +225,7 @@ uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c, uint32_t &pixel_t
                 }
                 else if (image_proc_type_ == 1){
                     // white balance parameters
-                    //color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
+                    color_pipeline_params_->SetBooleanNodeValue("EnableWhiteBalance", true);
 
                     //color_pipeline_params_->SetIntegerNodeValue("PixelDecimation", 8);
 
@@ -291,6 +303,37 @@ uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c, uint32_t &pixel_t
                     //m_colorPipelineParams->SetBooleanNodeValue("EnableSharpen", true);
 
                     // paremeters for autoexposure
+                    if (auto_exposure_) {
+                        connected_device->GetFloatNodeValue("ExposureTime", old_exposure);
+                        color_pipeline_params_->SetFloatNodeValue("OldExposure", old_exposure);
+
+                        if (default_gain_not_set_) {
+                            connected_device->GetFloatNodeValue("Gain", default_gain);
+                            color_pipeline_params_->SetFloatNodeValue("DefaultGain", default_gain);
+                            color_pipeline_params_->SetFloatNodeValue("OldGain", default_gain);
+                            old_gain = default_gain;
+                            default_gain_not_set_ = false;
+                        }
+                        else {
+                            connected_device->GetFloatNodeValue("Gain", old_gain);
+                            color_pipeline_params_->SetFloatNodeValue("OldGain", old_gain);
+                        }
+
+                        smcs::IImageBitmapInterface(image_info_).GetPixelType(src_pixel_type);
+                        bitsPerPixel = GvspGetBitsPerPixel((GVSP_PIXEL_TYPES)src_pixel_type);
+                        targetPixelAverage = pow(2.0, (double)bitsPerPixel)/2;
+
+                        color_pipeline_params_->SetFloatNodeValue("TargetPixelAverage", targetPixelAverage);
+                        color_pipeline_params_->SetFloatNodeValue("MinExposure", 200);
+                        color_pipeline_params_->SetFloatNodeValue("MaxExposure", 200000);
+                        color_pipeline_params_->SetFloatNodeValue("ExposureTreshold", 12);
+                        color_pipeline_params_->SetFloatNodeValue("MaxGainOffset", 20);
+                        color_pipeline_params_->SetFloatNodeValue("RedAverage", 143.5);
+                        color_pipeline_params_->SetFloatNodeValue("GreenAverage", 133.8);
+                        color_pipeline_params_->SetFloatNodeValue("BlueAverage", 112.3);
+                        color_pipeline_params_->SetFloatNodeValue("GrayAverage", 133.8);
+                        color_pipeline_params_->SetBooleanNodeValue("EnableAutoExposure", true);
+                    }
                     // autoexposure is not enabled by default
                     //double oldExposureTime, oldGain;
                     //m_device->GetFloatNodeValue("ExposureTime", oldExposureTime);
@@ -322,6 +365,14 @@ uint8_t *Grabber::grab(int device_num, int &w, int &h, int &c, uint32_t &pixel_t
 
                     //rezultati su spremljeni u color_pipeline_results_
                     // color_pipeline_results_->GetFloatNodeValue("RedGain", redGain);
+
+                    if (auto_exposure_) {
+                        color_pipeline_results_->GetFloatNodeValue("NewExposure", new_exposure_time);
+                        color_pipeline_results_->GetFloatNodeValue("NewGain", new_gain);
+                        connected_device->SetFloatNodeValue("ExposureTime", new_exposure_time);
+                        connected_device->SetFloatNodeValue("Gain", new_gain);
+                    }
+
 
                     im = smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetRawData();
                     smcs::IImageBitmapInterface(color_pipeline_bitmap_).GetPixelType(src_pixel_type);

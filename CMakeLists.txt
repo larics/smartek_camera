@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
         timesync
         sensor_msgs
         camera_info_manager
+        dynamic_reconfigure
         cv_bridge
         )
 
@@ -16,6 +17,10 @@ find_package(cv_bridge REQUIRED)
 find_package( OpenCV REQUIRED )
 
 set(CMAKE_CXX_FLAGS "-std=c++14")
+
+generate_dynamic_reconfigure_options(
+        cfg/SmartekCamera.cfg
+)
 
 catkin_package(
   INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
